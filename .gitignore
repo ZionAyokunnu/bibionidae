@@ -1,0 +1,19 @@
+# Ignore everything by default
+*
+
+# Allow Python and R files
+!*.py
+!*.r
+!*.R
+!*.Rmd
+
+# Allow gitignore and readme
+!.gitignore
+!README.md
+
+# Allow subfolders containing code
+!*/             # Allow folder structure
+!**/*.py
+!**/*.r
+!**/*.R
+!**/*.Rmd
