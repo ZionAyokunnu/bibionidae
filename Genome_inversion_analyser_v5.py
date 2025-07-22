@@ -79,8 +79,8 @@ ENHANCED_HYBRID_CONFIG = {
     
     # Minimap2 specific settings
     'minimap2_preset': '--sr',            # Short read preset for BUSCO-sized sequences
-    'minimap2_kmer_size': 13,             # Smaller k-mer for better sensitivity
-    'minimap2_threads': 4,                # CPU cores to use
+    'minimap2_kmer_size': 17,             # Smaller k-mer for better sensitivity
+    'minimap2_threads': 3,                # CPU cores to use
     'minimap2_min_score': 100,            # Minimum alignment score
     'minimap2_min_identity': 0.7,         # Minimum identity percentage
     'minimap2_extra_flags': '-c --cs',    # Additional flags for detailed output
