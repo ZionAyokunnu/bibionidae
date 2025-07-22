@@ -137,14 +137,14 @@ COMPLETE_ENHANCED_CONFIG = {
     # ==== ADAPTIVE PARAMETERS ====
     
     # BUSCO filtering (adaptive based on quality)
-    'base_similarity_threshold': 0.5,
-    'high_quality_similarity_threshold': 0.8,
-    'medium_quality_similarity_threshold': 0.6,
-    'low_quality_similarity_threshold': 0.3,
+    'base_similarity_threshold': 0.5,  # Base similarity threshold for BUSCO filtering
+    'high_quality_similarity_threshold': 0.8, # High quality assemblies
+    'medium_quality_similarity_threshold': 0.6, # Medium quality assemblies
+    'low_quality_similarity_threshold': 0.3, # Low quality assemblies
     'fragmented_assembly_similarity_threshold': 0.2,
     
-    'base_min_busco_length': 150,
-    'high_quality_min_length': 200,
+    'base_min_busco_length': 150, # Base minimum length for BUSCO genes
+    'high_quality_min_length': 200, 
     'medium_quality_min_length': 150,
     'low_quality_min_length': 100,
     'fragmented_assembly_min_length': 50,
@@ -154,9 +154,9 @@ COMPLETE_ENHANCED_CONFIG = {
     'single_gene_analysis_threshold': 1,
     
     # Synteny analysis parameters
-    'base_synteny_correlation_threshold': 0.8,
-    'relaxed_correlation_threshold': 0.6,
-    'strict_correlation_threshold': 0.9,
+    'base_synteny_correlation_threshold': 0.5,  # Base correlation threshold for synteny
+    'relaxed_correlation_threshold': 0.3,
+    'strict_correlation_threshold': 0.8,
     
     'base_min_synteny_block_size': 3,
     'micro_synteny_block_size': 1,
@@ -170,9 +170,9 @@ COMPLETE_ENHANCED_CONFIG = {
     # Inversion detection parameters
     'base_min_inversion_size': 2,
     'micro_inversion_size': 1,
-    'large_inversion_threshold': 10,
-    'strand_consistency_threshold': 0.7,
-    'inversion_confidence_threshold': 0.8,
+    'large_inversion_threshold': 5,
+    'strand_consistency_threshold': 0.6,
+    'inversion_confidence_threshold': 0.7,
     
     # Translocation detection
     'min_translocation_genes': 2,
@@ -417,7 +417,7 @@ def setup_sequence_aligner(config):
 ################################################################################
 
 def enhanced_parse_busco_table(busco_path, config):
-    """Enhanced BUSCO table parsing with comprehensive validation"""
+    """Enhanced BUSCO table parsing that correctly handles negative strand genes"""
     logger.info(f"Parsing BUSCO table: {busco_path}")
     
     with open(busco_path, 'r') as f:
@@ -443,28 +443,47 @@ def enhanced_parse_busco_table(busco_path, config):
                             continue
                         seen_entries.add(entry_key)
                     
-                    entry = {
-                        'busco_id': parts[0],
-                        'status': parts[1],
-                        'sequence': parts[2],
-                        'gene_start': int(parts[3]) if parts[3] != 'N/A' else None,
-                        'gene_end': int(parts[4]) if parts[4] != 'N/A' else None,
-                        'strand': parts[5] if len(parts) > 5 else '+',
-                        'score': float(parts[6]) if len(parts) > 6 and parts[6] != 'N/A' else None,
-                        'length': int(parts[7]) if len(parts) > 7 and parts[7] != 'N/A' else None,
-                        'line_number': line_num
-                    }
+                    # Parse coordinates - handle both positive and negative strand
+                    start_str = parts[3]
+                    end_str = parts[4]
                     
-                    # Validate coordinates
-                    if entry['gene_start'] and entry['gene_end']:
-                        if entry['gene_start'] >= entry['gene_end']:
-                            parsing_errors.append(f"Line {line_num}: Invalid coordinates")
-                            continue
-                    
-                    busco_data.append(entry)
-                    
+                    if start_str != 'N/A' and end_str != 'N/A':
+                        coord1 = int(start_str)
+                        coord2 = int(end_str)
+                        
+                        # For genomic coordinates, always use min as start, max as end
+                        gene_start = min(coord1, coord2)
+                        gene_end = max(coord1, coord2)
+                        
+                        # Determine actual strand if not provided correctly
+                        strand = parts[5] if len(parts) > 5 else '+'
+                        if coord1 > coord2 and strand == '+':
+                            strand = '-'  # Correct strand based on coordinates
+                        elif coord1 < coord2 and strand == '-':
+                            strand = '+'  # Correct strand based on coordinates
+                        
+                        entry = {
+                            'busco_id': parts[0],
+                            'status': parts[1],
+                            'sequence': parts[2],
+                            'gene_start': gene_start,
+                            'gene_end': gene_end,
+                            'strand': strand,
+                            'score': float(parts[6]) if len(parts) > 6 and parts[6] != 'N/A' else None,
+                            'length': int(parts[7]) if len(parts) > 7 and parts[7] != 'N/A' else (gene_end - gene_start),
+                            'line_number': line_num,
+                            'original_start': coord1,  # Keep original for debugging
+                            'original_end': coord2
+                        }
+                        
+                        busco_data.append(entry)
+                    else:
+                        parsing_errors.append(f"Line {line_num}: N/A coordinates")
+                        
                 except (ValueError, IndexError) as e:
                     parsing_errors.append(f"Line {line_num}: {e}")
+            else:
+                parsing_errors.append(f"Line {line_num}: Too few columns ({len(parts)})")
     
     busco_df = pd.DataFrame(busco_data)
     
@@ -472,20 +491,26 @@ def enhanced_parse_busco_table(busco_path, config):
     if config.get('enable_paralog_detection', False):
         busco_df = detect_and_annotate_paralogs(busco_df, config)
     
-    # Report parsing issues
-    if parsing_errors and config.get('enable_debug_output', False):
-        logger.warning(f"  {len(parsing_errors)} parsing errors detected")
-        for error in parsing_errors[:5]:  # Show first 5 errors
-            logger.warning(f"    {error}")
-        if len(parsing_errors) > 5:
-            logger.warning(f"    ... and {len(parsing_errors) - 5} more")
+    # Report parsing issues only if debug enabled
+    total_lines = len(lines)
+    success_rate = len(busco_data) / total_lines * 100 if total_lines > 0 else 0
+    
+    logger.info(f"  Parsing results:")
+    logger.info(f"    Total data lines: {total_lines}")
+    logger.info(f"    Successfully parsed: {len(busco_data)} ({success_rate:.1f}%)")
+    logger.info(f"    Parsing errors: {len(parsing_errors)}")
+    
+    if len(parsing_errors) > 0 and config.get('enable_debug_output', False):
+        logger.info(f"    First few errors:")
+        for error in parsing_errors[:3]:
+            logger.info(f"      {error}")
     
     if duplicate_entries and config.get('enable_debug_output', False):
         logger.warning(f"  {len(duplicate_entries)} duplicate entries removed")
     
     logger.info(f"  Found {len(busco_df)} valid BUSCO entries")
     return busco_df
-
+  
 def detect_and_annotate_paralogs(busco_df, config):
     """Enhanced paralog detection with detailed analysis"""
     logger.info("  Detecting and analyzing paralogs...")

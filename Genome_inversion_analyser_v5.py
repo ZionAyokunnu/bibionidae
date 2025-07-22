@@ -149,7 +149,7 @@ FAST_CONFIG = {
     'enable_debug_output': False,                 # DISABLE - reduces logging overhead
     
     # ==== PARAMETERS - OPTIMIZED FOR SPEED ====
-    'base_similarity_threshold': 0.5,
+    'base_similarity_threshold': 0.1,
     'base_min_busco_length': 150,
     'base_min_genes_per_chromosome': 3,
     'base_synteny_correlation_threshold': 0.8,
@@ -432,7 +432,7 @@ def assess_assembly_quality(fasta_path, busco_df, config):
         'adjustments': adjustments
     }
 
-def calculate_quality_score(metrics, config):
+# def calculate_quality_score(metrics, config):
     """Calculate comprehensive assembly quality score"""
     score_components = []
     
@@ -473,6 +473,56 @@ def calculate_quality_score(metrics, config):
     
     return np.mean(score_components) if score_components else 0.5
 
+def calculate_quality_score(metrics, config):
+    """Calculate comprehensive assembly quality score"""
+    score_components = []
+    
+    # Define default thresholds if not in config
+    high_quality_n50_threshold = config.get('high_quality_n50_threshold', 10000000)
+    medium_quality_n50_threshold = config.get('medium_quality_n50_threshold', 1000000)
+    high_quality_busco_threshold = config.get('high_quality_busco_threshold', 0.95)
+    medium_quality_busco_threshold = config.get('medium_quality_busco_threshold', 0.85)
+    low_quality_busco_threshold = config.get('low_quality_busco_threshold', 0.70)
+    
+    # N50 component
+    if 'n50' in metrics:
+        if metrics['n50'] >= high_quality_n50_threshold:
+            score_components.append(1.0)
+        elif metrics['n50'] >= medium_quality_n50_threshold:
+            score_components.append(0.7)
+        else:
+            score_components.append(0.3)
+    
+    # BUSCO completeness component
+    if 'busco_completeness' in metrics:
+        completeness = metrics['busco_completeness']
+        if completeness >= high_quality_busco_threshold:
+            score_components.append(1.0)
+        elif completeness >= medium_quality_busco_threshold:
+            score_components.append(0.7)
+        elif completeness >= low_quality_busco_threshold:
+            score_components.append(0.4)
+        else:
+            score_components.append(0.1)
+    
+    # Contig count penalty (fewer contigs is better for chromosomal assemblies)
+    if 'n_contigs' in metrics:
+        if metrics['n_contigs'] <= 50:  # Good chromosomal assembly
+            score_components.append(1.0)
+        elif metrics['n_contigs'] <= 1000:  # Reasonable scaffold assembly
+            score_components.append(0.6)
+        else:  # Fragmented assembly
+            score_components.append(0.2)
+    
+    # Fragmentation penalty
+    if 'busco_fragmentation' in metrics:
+        fragmentation_score = max(0.0, 1.0 - metrics['busco_fragmentation'] * 2)
+        score_components.append(fragmentation_score)
+    
+    return np.mean(score_components) if score_components else 0.5
+
+
+
 def classify_assembly_quality(quality_score, metrics, config):
     """Classify assembly quality into categories"""
     if quality_score >= 0.8:
@@ -484,7 +534,7 @@ def classify_assembly_quality(quality_score, metrics, config):
     else:
         return 'fragmented'
 
-def suggest_parameter_adjustments(quality_class, metrics, config):
+# def suggest_parameter_adjustments(quality_class, metrics, config):
     """Suggest parameter adjustments based on assembly quality"""
     adjustments = {}
     
@@ -522,6 +572,67 @@ def suggest_parameter_adjustments(quality_class, metrics, config):
         })
     
     return adjustments
+
+def suggest_parameter_adjustments(quality_class, metrics, config):
+    """Suggest parameter adjustments based on assembly quality"""
+    adjustments = {}
+    
+    # Define default thresholds if not in config
+    high_quality_similarity_threshold = config.get('high_quality_similarity_threshold', 0.8)
+    medium_quality_similarity_threshold = config.get('medium_quality_similarity_threshold', 0.6)
+    low_quality_similarity_threshold = config.get('low_quality_similarity_threshold', 0.3)
+    fragmented_assembly_similarity_threshold = config.get('fragmented_assembly_similarity_threshold', 0.2)
+    
+    high_quality_min_length = config.get('high_quality_min_length', 200)
+    medium_quality_min_length = config.get('medium_quality_min_length', 150)
+    low_quality_min_length = config.get('low_quality_min_length', 100)
+    fragmented_assembly_min_length = config.get('fragmented_assembly_min_length', 50)
+    
+    base_min_synteny_block_size = config.get('base_min_synteny_block_size', 3)
+    strict_correlation_threshold = config.get('strict_correlation_threshold', 0.9)
+    base_synteny_correlation_threshold = config.get('base_synteny_correlation_threshold', 0.8)
+    relaxed_correlation_threshold = config.get('relaxed_correlation_threshold', 0.6)
+    
+    base_max_gap_in_synteny = config.get('base_max_gap_in_synteny', 1000000)
+    adaptive_max_gap_multiplier = config.get('adaptive_max_gap_multiplier', 2.0)
+    sparse_genome_gap_factor = config.get('sparse_genome_gap_factor', 3.0)
+    micro_synteny_block_size = config.get('micro_synteny_block_size', 1)
+    
+    if quality_class == 'high':
+        adjustments.update({
+            'similarity_threshold': high_quality_similarity_threshold,
+            'min_busco_length': high_quality_min_length,
+            'min_synteny_block_size': base_min_synteny_block_size,
+            'correlation_threshold': strict_correlation_threshold,
+            'max_gap_in_synteny': base_max_gap_in_synteny
+        })
+    elif quality_class == 'medium':
+        adjustments.update({
+            'similarity_threshold': medium_quality_similarity_threshold,
+            'min_busco_length': medium_quality_min_length,
+            'min_synteny_block_size': base_min_synteny_block_size,
+            'correlation_threshold': base_synteny_correlation_threshold,
+            'max_gap_in_synteny': base_max_gap_in_synteny
+        })
+    elif quality_class == 'low':
+        adjustments.update({
+            'similarity_threshold': low_quality_similarity_threshold,
+            'min_busco_length': low_quality_min_length,
+            'min_synteny_block_size': max(1, base_min_synteny_block_size - 1),
+            'correlation_threshold': relaxed_correlation_threshold,
+            'max_gap_in_synteny': int(base_max_gap_in_synteny * adaptive_max_gap_multiplier)
+        })
+    else:  # fragmented
+        adjustments.update({
+            'similarity_threshold': fragmented_assembly_similarity_threshold,
+            'min_busco_length': fragmented_assembly_min_length,
+            'min_synteny_block_size': micro_synteny_block_size,
+            'correlation_threshold': relaxed_correlation_threshold,
+            'max_gap_in_synteny': int(base_max_gap_in_synteny * sparse_genome_gap_factor)
+        })
+    
+    return adjustments
+
 
 def setup_sequence_aligner(config):
     """Setup enhanced sequence aligner with configurable parameters"""
@@ -1753,8 +1864,8 @@ if __name__ == "__main__":
     # Choose configuration mode
     import sys
     
-    if len(sys.argv) > 1 and sys.argv[1] == '--complete':
-        config = COMPLETE_ENHANCED_CONFIG
+    if len(sys.argv) > 1 and sys.argv[1] == '--fast':
+        config = FAST_CONFIG
         logger.info("Starting Complete Enhanced Synteny and Inversion Analyzer (Full Features)")
     else:
         config = FAST_CONFIG
