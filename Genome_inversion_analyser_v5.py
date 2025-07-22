@@ -2753,7 +2753,7 @@ if __name__ == "__main__":
             sys.exit(1)
     else:
         # Default to hybrid configuration
-        config = ENHANCED_HYBRID_CONFIG
+        config = COMPLETE_ENHANCED_CONFIG
         logger.info("Starting Enhanced Hybrid Analyzer (default)")
         logger.info("Available options: --fast, --hybrid, --complete")
     
