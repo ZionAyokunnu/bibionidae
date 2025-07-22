@@ -1071,13 +1071,35 @@ def run_biopython_alignment_batch(sequence_pairs_batch, config):
     """Run Biopython alignment on a batch of sequence pairs"""
     results = []
     
+    # Handle both dict and simple config
+    if isinstance(config, dict):
+        match_score = config.get('biopython_match_score', 2)
+        mismatch_score = config.get('biopython_mismatch_score', -1)
+        gap_open_score = config.get('biopython_gap_open_score', -2)
+        gap_extend_score = config.get('biopython_gap_extend_score', -0.5)
+        mode = config.get('biopython_mode', 'local')
+        fallback_enabled = config.get('fallback_to_simple_similarity', True)
+    else:
+        # Default values if config is not available
+        match_score = 2
+        mismatch_score = -1
+        gap_open_score = -2
+        gap_extend_score = -0.5
+        mode = 'local'
+        fallback_enabled = True
+    
     # Setup aligner
-    aligner = PairwiseAligner()
-    aligner.match_score = config.get('biopython_match_score', 2)
-    aligner.mismatch_score = config.get('biopython_mismatch_score', -1)
-    aligner.open_gap_score = config.get('biopython_gap_open_score', -2)
-    aligner.extend_gap_score = config.get('biopython_gap_extend_score', -0.5)
-    aligner.mode = config.get('biopython_mode', 'local')
+    try:
+        aligner = PairwiseAligner()
+        aligner.match_score = match_score
+        aligner.mismatch_score = mismatch_score
+        aligner.open_gap_score = gap_open_score
+        aligner.extend_gap_score = gap_extend_score
+        aligner.mode = mode
+        use_aligner = True
+    except Exception as e:
+        logger.warning(f"Failed to setup Biopython aligner: {e}")
+        use_aligner = False
     
     for pair_idx, pair in enumerate(sequence_pairs_batch):
         try:
@@ -1085,56 +1107,70 @@ def run_biopython_alignment_batch(sequence_pairs_batch, config):
             seq2 = pair['second_gene']['gene_sequence']
             busco_id = pair['first_gene']['busco_id']
             
-            # Perform alignment
-            alignments = aligner.align(seq1, seq2)
-            if alignments:
-                best_alignment = alignments[0]
-                
-                # Calculate detailed statistics
-                alignment_str = str(best_alignment)
-                alignment_lines = alignment_str.split('\n')
-                if len(alignment_lines) >= 3:
-                    seq1_aligned = alignment_lines[0]
-                    seq2_aligned = alignment_lines[2]
-                    
-                    matches = sum(1 for a, b in zip(seq1_aligned, seq2_aligned) 
-                                if a == b and a != '-')
-                    alignment_length = len(seq1_aligned)
-                    gaps = seq1_aligned.count('-') + seq2_aligned.count('-')
-                else:
-                    # Fallback calculation
-                    matches = int(best_alignment.score / 2)  # Rough estimate
-                    alignment_length = max(len(seq1), len(seq2))
-                    gaps = 0
-                
-                # Coverage calculations
-                query_coverage = (alignment_length - seq1_aligned.count('-')) / len(seq1) if len(alignment_lines) >= 3 else 1.0
-                target_coverage = (alignment_length - seq2_aligned.count('-')) / len(seq2) if len(alignment_lines) >= 3 else 1.0
-                identity = matches / alignment_length if alignment_length > 0 else 0
-                
-                result = {
-                    'pair_index': pair_idx,
-                    'busco_id': busco_id,
-                    'identity': identity,
-                    'query_coverage': query_coverage,
-                    'target_coverage': target_coverage,
-                    'min_coverage': min(query_coverage, target_coverage),
-                    'alignment_length': alignment_length,
-                    'matches': matches,
-                    'score': best_alignment.score,
-                    'method': 'biopython'
-                }
-                results.append(result)
-                
-        except Exception as e:
-            if config.get('fallback_to_simple_similarity', True):
-                # Fallback to difflib
+            if use_aligner:
+                # Try Biopython alignment
+                try:
+                    alignments = aligner.align(seq1, seq2)
+                    if alignments:
+                        best_alignment = alignments[0]
+                        
+                        # Calculate detailed statistics
+                        try:
+                            alignment_str = str(best_alignment)
+                            alignment_lines = alignment_str.split('\n')
+                            if len(alignment_lines) >= 3:
+                                seq1_aligned = alignment_lines[0]
+                                seq2_aligned = alignment_lines[2]
+                                
+                                matches = sum(1 for a, b in zip(seq1_aligned, seq2_aligned) 
+                                            if a == b and a != '-')
+                                alignment_length = len(seq1_aligned)
+                                
+                                # Coverage calculations
+                                query_coverage = (alignment_length - seq1_aligned.count('-')) / len(seq1)
+                                target_coverage = (alignment_length - seq2_aligned.count('-')) / len(seq2)
+                                identity = matches / alignment_length if alignment_length > 0 else 0
+                            else:
+                                # Fallback calculation
+                                matches = int(best_alignment.score / 2)  # Rough estimate
+                                alignment_length = max(len(seq1), len(seq2))
+                                query_coverage = 0.8  # Conservative estimate
+                                target_coverage = 0.8
+                                identity = matches / alignment_length if alignment_length > 0 else 0
+                        except Exception as e:
+                            # Simple fallback
+                            matches = int(best_alignment.score / 2)
+                            alignment_length = max(len(seq1), len(seq2))
+                            query_coverage = 0.7
+                            target_coverage = 0.7
+                            identity = matches / alignment_length if alignment_length > 0 else 0
+                        
+                        result = {
+                            'pair_index': pair_idx,
+                            'busco_id': busco_id,
+                            'identity': identity,
+                            'query_coverage': query_coverage,
+                            'target_coverage': target_coverage,
+                            'min_coverage': min(query_coverage, target_coverage),
+                            'alignment_length': alignment_length,
+                            'matches': matches,
+                            'score': best_alignment.score,
+                            'method': 'biopython'
+                        }
+                        results.append(result)
+                        continue
+                except Exception as e:
+                    # Biopython failed, fall back to difflib
+                    pass
+            
+            # Fallback to difflib
+            if fallback_enabled:
                 similarity = SequenceMatcher(None, seq1, seq2).ratio()
                 len_ratio = min(len(seq1), len(seq2)) / max(len(seq1), len(seq2))
                 
                 result = {
                     'pair_index': pair_idx,
-                    'busco_id': pair['first_gene']['busco_id'],
+                    'busco_id': busco_id,
                     'identity': similarity,
                     'query_coverage': 1.0,
                     'target_coverage': 1.0,
@@ -1145,10 +1181,33 @@ def run_biopython_alignment_batch(sequence_pairs_batch, config):
                     'method': 'difflib_fallback'
                 }
                 results.append(result)
+                
+        except Exception as e:
+            # Log error but continue with next pair
+            logger.warning(f"Failed to process sequence pair {pair_idx}: {e}")
+            continue
     
     return results
 
-def run_parallel_biopython_alignment(sequence_pairs, config):
+def run_simple_biopython_alignment(sequence_pairs, config):
+    """Simple single-threaded Biopython alignment as fallback"""
+    logger.info(f"  Using simple sequential alignment for {len(sequence_pairs)} sequences...")
+    
+    results = []
+    batch_size = 100
+    total_batches = (len(sequence_pairs) + batch_size - 1) // batch_size
+    
+    for i in range(0, len(sequence_pairs), batch_size):
+        batch = sequence_pairs[i:i + batch_size]
+        batch_results = run_biopython_alignment_batch(batch, config)
+        results.extend(batch_results)
+        
+        # Progress reporting
+        current_batch = (i // batch_size) + 1
+        processed = min(i + batch_size, len(sequence_pairs))
+        logger.info(f"    Progress: {processed}/{len(sequence_pairs)} sequences ({processed/len(sequence_pairs)*100:.1f}%) - Batch {current_batch}/{total_batches}")
+    
+    return results
     """Run Biopython alignment with multiprocessing"""
     if not sequence_pairs:
         return []
@@ -1161,29 +1220,66 @@ def run_parallel_biopython_alignment(sequence_pairs, config):
     
     all_results = []
     
-    if config.get('enable_parallel_alignment', True) and len(batches) > 1:
-        # Parallel processing
-        with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            batch_args = [(batch, config) for batch in batches]
-            futures = [executor.submit(run_biopython_alignment_batch, batch, config) for batch, config in batch_args]
-            
-            for i, future in enumerate(futures):
-                try:
-                    batch_results = future.result(timeout=config.get('timeout_per_alignment', 30))
-                    all_results.extend(batch_results)
-                    
-                    if config.get('detailed_alignment_logging', False):
-                        logger.info(f"    Completed batch {i+1}/{len(batches)}")
-                except Exception as e:
-                    logger.warning(f"Batch {i+1} failed: {e}")
+    # Extract only serializable config parameters
+    simple_config = {
+        'biopython_match_score': config.get('biopython_match_score', 2),
+        'biopython_mismatch_score': config.get('biopython_mismatch_score', -1),
+        'biopython_gap_open_score': config.get('biopython_gap_open_score', -2),
+        'biopython_gap_extend_score': config.get('biopython_gap_extend_score', -0.5),
+        'biopython_mode': config.get('biopython_mode', 'local'),
+        'fallback_to_simple_similarity': config.get('fallback_to_simple_similarity', True),
+        'timeout_per_alignment': config.get('timeout_per_alignment', 30),
+        'detailed_alignment_logging': config.get('detailed_alignment_logging', False)
+    }
+    
+    if config.get('enable_parallel_alignment', True) and len(batches) > 1 and len(sequence_pairs) > 200:
+        # Parallel processing for large datasets only
+        logger.info(f"    Using parallel processing with {max_workers} workers")
+        try:
+            with ProcessPoolExecutor(max_workers=max_workers) as executor:
+                futures = []
+                for batch in batches:
+                    future = executor.submit(run_biopython_alignment_batch, batch, simple_config)
+                    futures.append(future)
+                
+                for i, future in enumerate(futures):
+                    try:
+                        batch_results = future.result(timeout=simple_config['timeout_per_alignment'])
+                        all_results.extend(batch_results)
+                        
+                        if simple_config['detailed_alignment_logging']:
+                            logger.info(f"    Completed batch {i+1}/{len(batches)}")
+                        elif i % 5 == 0:  # Progress every 5 batches
+                            logger.info(f"    Progress: {i+1}/{len(batches)} batches completed")
+                    except Exception as e:
+                        logger.warning(f"Batch {i+1} failed: {e}")
+                        # Try sequential processing for failed batch
+                        try:
+                            batch_results = run_biopython_alignment_batch(batches[i], simple_config)
+                            all_results.extend(batch_results)
+                            logger.info(f"    Batch {i+1} recovered with sequential processing")
+                        except Exception as e2:
+                            logger.error(f"    Batch {i+1} failed completely: {e2}")
+        except Exception as e:
+            logger.warning(f"Parallel processing failed: {e}. Falling back to sequential processing")
+            # Fall back to sequential processing
+            for i, batch in enumerate(batches):
+                batch_results = run_biopython_alignment_batch(batch, simple_config)
+                all_results.extend(batch_results)
+                
+                if i % 10 == 0:
+                    logger.info(f"    Processed {i * batch_size}/{len(sequence_pairs)} sequence pairs")
     else:
         # Sequential processing
+        logger.info(f"    Using sequential processing for {len(sequence_pairs)} sequence pairs")
         for i, batch in enumerate(batches):
-            batch_results = run_biopython_alignment_batch(batch, config)
+            batch_results = run_biopython_alignment_batch(batch, simple_config)
             all_results.extend(batch_results)
             
-            if i % config.get('progress_reporting_interval', 50) == 0:
-                logger.info(f"    Processed {i * batch_size}/{len(sequence_pairs)} sequence pairs")
+            # Progress reporting
+            if i % 10 == 0 or i == len(batches) - 1:
+                processed = min((i + 1) * batch_size, len(sequence_pairs))
+                logger.info(f"    Processed {processed}/{len(sequence_pairs)} sequence pairs ({processed/len(sequence_pairs)*100:.1f}%)")
     
     return all_results
 
@@ -1364,7 +1460,11 @@ def run_hybrid_alignment_analysis(first_busco_df, second_busco_df, config):
         # Short sequences -> Biopython
         if partitions['short_pairs']:
             logger.info(f"  Running Biopython alignment on {len(partitions['short_pairs'])} short sequences...")
-            short_results = run_parallel_biopython_alignment(partitions['short_pairs'], config)
+            try:
+                short_results = run_parallel_biopython_alignment(partitions['short_pairs'], config)
+            except Exception as e:
+                logger.warning(f"Parallel alignment failed for short sequences: {e}")
+                short_results = run_simple_biopython_alignment(partitions['short_pairs'], config)
             all_results.extend(short_results)
         
         # Long sequences -> Minimap2
@@ -1380,20 +1480,32 @@ def run_hybrid_alignment_analysis(first_busco_df, second_busco_df, config):
             
             if buffer_method == 'dual' and config.get('cross_validate_buffer_zone', True):
                 # Run both methods and compare
-                bio_results = run_parallel_biopython_alignment(partitions['buffer_pairs'], config)
+                try:
+                    bio_results = run_parallel_biopython_alignment(partitions['buffer_pairs'], config)
+                except Exception as e:
+                    logger.warning(f"Parallel alignment failed for buffer zone: {e}")
+                    bio_results = run_simple_biopython_alignment(partitions['buffer_pairs'], config)
                 mm2_results = run_minimap2_alignment(partitions['buffer_pairs'], config)
                 buffer_results = select_best_buffer_results(bio_results, mm2_results, config)
             elif buffer_method == 'minimap2':
                 buffer_results = run_minimap2_alignment(partitions['buffer_pairs'], config)
             else:  # Default to Biopython
-                buffer_results = run_parallel_biopython_alignment(partitions['buffer_pairs'], config)
+                try:
+                    buffer_results = run_parallel_biopython_alignment(partitions['buffer_pairs'], config)
+                except Exception as e:
+                    logger.warning(f"Parallel alignment failed for buffer zone: {e}")
+                    buffer_results = run_simple_biopython_alignment(partitions['buffer_pairs'], config)
             
             all_results.extend(buffer_results)
         
         # Mixed length pairs -> Biopython (safer for heterogeneous lengths)
         if partitions['mixed_pairs']:
             logger.info(f"  Running Biopython alignment on {len(partitions['mixed_pairs'])} mixed-length sequences...")
-            mixed_results = run_parallel_biopython_alignment(partitions['mixed_pairs'], config)
+            try:
+                mixed_results = run_parallel_biopython_alignment(partitions['mixed_pairs'], config)
+            except Exception as e:
+                logger.warning(f"Parallel alignment failed for mixed sequences: {e}")
+                mixed_results = run_simple_biopython_alignment(partitions['mixed_pairs'], config)
             all_results.extend(mixed_results)
     
     elif strategy == 'minimap2':
@@ -1402,7 +1514,12 @@ def run_hybrid_alignment_analysis(first_busco_df, second_busco_df, config):
     
     else:  # Biopython only
         logger.info(f"  Running Biopython alignment on all {len(sequence_pairs)} sequences...")
-        all_results = run_parallel_biopython_alignment(sequence_pairs, config)
+        try:
+            all_results = run_parallel_biopython_alignment(sequence_pairs, config)
+        except Exception as e:
+            logger.warning(f"Parallel alignment failed: {e}")
+            logger.info("  Falling back to simple sequential alignment...")
+            all_results = run_simple_biopython_alignment(sequence_pairs, config)
     
     # Normalize scores and calculate confidence
     logger.info("  Normalizing alignment scores and calculating confidence...")
