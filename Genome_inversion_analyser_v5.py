@@ -75,8 +75,8 @@ ENHANCED_HYBRID_CONFIG = {
     
     # Minimap2 specific settings
     'minimap2_preset': '--sr',            # Short read preset for BUSCO-sized sequences
-    'minimap2_kmer_size': 13,             # Smaller k-mer for better sensitivity
-    'minimap2_threads': 4,                # CPU cores to use
+    'minimap2_kmer_size': 11,             # Smaller k-mer for better sensitivity
+    'minimap2_threads': 1,                # CPU cores to use
     'minimap2_min_score': 100,            # Minimum alignment score
     'minimap2_min_identity': 0.7,         # Minimum identity percentage
     'minimap2_extra_flags': '-c --cs',    # Additional flags for detailed output
@@ -87,7 +87,7 @@ ENHANCED_HYBRID_CONFIG = {
     'biopython_gap_open_score': -2,
     'biopython_gap_extend_score': -0.5,
     'biopython_mode': 'local',            # 'local' or 'global'
-    'biopython_batch_size': 100,          # Process in batches for progress tracking
+    'biopython_batch_size': 10,          # Process in batches for progress tracking
     
     # Score normalization and confidence calculation
     'normalize_scores': True,             # Convert all scores to 0-1 scale
@@ -111,7 +111,7 @@ ENHANCED_HYBRID_CONFIG = {
     'cross_validate_buffer_zone': True,   # Run both methods on buffer zone genes
     
     # Performance and debugging
-    'enable_parallel_alignment': True,    # Use multiprocessing for Biopython
+    'enable_parallel_alignment': False,    # Use multiprocessing for Biopython
     'alignment_cache_enabled': True,      # Cache results to avoid recomputation
     'temp_file_cleanup': True,            # Clean up minimap2 temp files
     'detailed_alignment_logging': False,   # Log every alignment (verbose)
@@ -202,14 +202,14 @@ FAST_HYBRID_CONFIG = {
     
     # Override for speed
     'alignment_strategy': 'biopython',     # Skip minimap2 for simplicity
-    'short_sequence_threshold': 99999,     # Force all sequences through Biopython
+    'short_sequence_threshold': 400,     # Force all sequences through Biopython
     'enable_parallel_alignment': True,     # Use multiprocessing
     'biopython_batch_size': 50,           # Smaller batches
     'detailed_alignment_logging': False,
     'progress_reporting_interval': 25,
     
     # Simplified features
-    'use_reciprocal_best_hits': False,    # Simple best hit
+    'use_reciprocal_best_hits': True,    # Simple best hit
     'validate_alignment_consistency': False,
     'cross_validate_buffer_zone': False,
     'enable_translation_check': False,
