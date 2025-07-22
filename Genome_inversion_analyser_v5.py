@@ -11,6 +11,10 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from Bio import SeqIO, Align
 from Bio.Seq import Seq
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+import seaborn as sns
+import os
 from Bio.SeqRecord import SeqRecord
 from Bio.Align import PairwiseAligner
 import os
@@ -1226,6 +1230,8 @@ def run_simple_biopython_alignment(sequence_pairs, config):
         logger.info(f"    Progress: {processed}/{len(sequence_pairs)} sequences ({processed/len(sequence_pairs)*100:.1f}%) - Batch {current_batch}/{total_batches}")
     
     return results
+
+def run_parallel_biopython_alignment(sequence_pairs, config):
     """Run Biopython alignment with multiprocessing"""
     if not sequence_pairs:
         return []
@@ -1610,6 +1616,21 @@ def select_best_buffer_results(bio_results, mm2_results, config):
     
     return best_results
 
+def create_method_summary_plot(results_dict, ax):
+    """Create alignment method summary plot"""
+    if 'ortholog_df' not in results_dict or results_dict['ortholog_df'].empty:
+        ax.text(0.5, 0.5, 'No method\ndata', ha='center', va='center', transform=ax.transAxes)
+        ax.set_title('Method Summary')
+        return
+    
+    ortholog_df = results_dict['ortholog_df']
+    if 'alignment_method' in ortholog_df.columns:
+        method_counts = ortholog_df['alignment_method'].value_counts()
+        colors = plt.cm.Set3(range(len(method_counts)))
+        ax.pie(method_counts.values, labels=method_counts.index,
+               autopct='%1.0f%%', colors=colors, textprops={'fontsize': 8})
+    ax.set_title('Alignment Methods', fontsize=10)
+    
 ################################################################################
 # CACHING AND PERFORMANCE
 ################################################################################
@@ -2025,15 +2046,177 @@ def create_enhanced_visualizations(output_dir, results, config):
     logger.info("  - Chromosome rearrangement networks")
     logger.info("  - Quality assessment dashboards")
 
+def generate_comprehensive_report(output_dir, results):
+    """Generate comprehensive analysis report"""
+    reports_dir = output_dir / 'reports'
+    
+    # This would contain detailed report generation
+    logger.info(f"  Comprehensive report would be generated in {reports_dir}")
+    logger.info("  - Executive summary with key findings")
+    logger.info("  - Detailed statistical analysis")
+    logger.info("  - Quality assessment report")
+    logger.info("  - Methodological documentation")
+
+################################################################################
+# MAIN ANALYSIS RUNNER
+################################################################################
+
+def run_complete_enhanced_analysis_with_hybrid(config=None):
+    """Run complete enhanced synteny and inversion analysis with hybrid alignment"""
+    if config is None:
+        config = ENHANCED_HYBRID_CONFIG
+    
+    logger.info("=" * 80)
+    logger.info("ENHANCED INTEGRATED SYNTENY AND INVERSION ANALYZER")
+    logger.info("With Hybrid Alignment System (Minimap2 + Biopython)")
+    logger.info("=" * 80)
+    
+    # Create output directory
+    output_dir = create_output_directory(config)
+    logger.info(f"Output directory: {output_dir}")
+    
+    try:
+        # Phase 1: Enhanced BUSCO Processing and Quality Assessment
+        logger.info("\n" + "=" * 50)
+        logger.info("PHASE 1: ENHANCED BUSCO PROCESSING")
+        logger.info("=" * 50)
+        
+        # Parse BUSCO data with enhanced validation
+        logger.info("Step 1.1: Parsing BUSCO tables")
+        first_busco_raw = enhanced_parse_busco_table(config['first_busco_path'], config)
+        second_busco_raw = enhanced_parse_busco_table(config['second_busco_path'], config)
+        
+        # Assess assembly quality
+        logger.info("Step 1.2: Assessing assembly quality")
+        first_quality = assess_assembly_quality(config['first_fasta_path'], first_busco_raw, config)
+        second_quality = assess_assembly_quality(config['second_fasta_path'], second_busco_raw, config)
+        
+        # Enhanced BUSCO filtering
+        logger.info("Step 1.3: Enhanced BUSCO filtering")
+        first_busco_filtered = enhanced_filter_busco_genes(first_busco_raw, config, first_quality)
+        second_busco_filtered = enhanced_filter_busco_genes(second_busco_raw, config, second_quality)
+        
+        # Enhanced sequence extraction
+        logger.info("Step 1.4: Enhanced sequence extraction")
+        aligner = setup_hybrid_sequence_aligner(config)
+        first_busco_seqs = extract_enhanced_busco_sequences(first_busco_filtered, config['first_fasta_path'], config)
+        second_busco_seqs = extract_enhanced_busco_sequences(second_busco_filtered, config['second_fasta_path'], config)
+        
+        # Phase 2: Enhanced Ortholog Mapping with Hybrid Alignment
+        logger.info("\n" + "=" * 50)
+        logger.info("PHASE 2: ENHANCED ORTHOLOG MAPPING (HYBRID ALIGNMENT)")
+        logger.info("=" * 50)
+        
+        logger.info("Step 2.1: Creating enhanced ortholog mapping with hybrid alignment")
+        
+        # Check cache first
+        cache_key = generate_cache_key(first_busco_seqs, second_busco_seqs, config)
+        cached_result = load_cached_alignment_results(cache_key, config)
+        
+        if cached_result:
+            logger.info("  Using cached alignment results")
+            ortholog_df, paralog_df = cached_result
+        else:
+            # Run hybrid alignment analysis
+            ortholog_df, paralog_df = run_hybrid_alignment_analysis(
+                first_busco_seqs, second_busco_seqs, config
+            )
+            
+            # Cache results
+            cache_alignment_results((ortholog_df, paralog_df), cache_key, config)
+        
+        # Phase 3: Enhanced Synteny Analysis
+        logger.info("\n" + "=" * 50)
+        logger.info("PHASE 3: ENHANCED SYNTENY ANALYSIS")
+        logger.info("=" * 50)
+        
+        logger.info("Step 3.1: Analyzing enhanced synteny blocks")
+        synteny_df, mapping_df = analyze_enhanced_synteny_blocks(ortholog_df, config)
+        
+        # Phase 4: Enhanced Rearrangement Analysis
+        logger.info("\n" + "=" * 50)
+        logger.info("PHASE 4: ENHANCED REARRANGEMENT ANALYSIS")
+        logger.info("=" * 50)
+        
+        logger.info("Step 4.1: Analyzing chromosome rearrangements")
+        rearrangement_df = analyze_enhanced_chromosome_rearrangements(ortholog_df, config)
+        
+        # Phase 5: Enhanced Inversion Analysis
+        logger.info("\n" + "=" * 50)
+        logger.info("PHASE 5: ENHANCED INVERSION ANALYSIS")
+        logger.info("=" * 50)
+        
+        logger.info("Step 5.1: Analyzing inversions")
+        inversion_df = analyze_enhanced_inversions(synteny_df, ortholog_df, config)
+        
+        # Phase 6: Results Integration and Reporting
+        logger.info("\n" + "=" * 50)
+        logger.info("PHASE 6: RESULTS INTEGRATION AND REPORTING")
+        logger.info("=" * 50)
+        
+        # Save all results
+        logger.info("Step 6.1: Saving analysis results")
+        save_enhanced_results(output_dir, {
+            'ortholog_df': ortholog_df,
+            'paralog_df': paralog_df,
+            'synteny_df': synteny_df,
+            'mapping_df': mapping_df,
+            'rearrangement_df': rearrangement_df,
+            'inversion_df': inversion_df,
+            'first_quality': first_quality,
+            'second_quality': second_quality
+        }, config)
+        
+        # Generate comprehensive visualizations
+        logger.info("Step 6.2: Creating enhanced visualizations")
+        create_enhanced_visualizations(output_dir, {
+            'ortholog_df': ortholog_df,
+            'synteny_df': synteny_df,
+            'rearrangement_df': rearrangement_df,
+            'inversion_df': inversion_df
+        }, config)
+        
+        # Generate final report
+        logger.info("Step 6.3: Generating comprehensive report")
+        generate_comprehensive_report(output_dir, {
+            'ortholog_df': ortholog_df,
+            'paralog_df': paralog_df,
+            'synteny_df': synteny_df,
+            'rearrangement_df': rearrangement_df,
+            'inversion_df': inversion_df,
+            'first_quality': first_quality,
+            'second_quality': second_quality,
+            'config': config
+        })
+        
+        logger.info("\n" + "=" * 80)
+        logger.info("ENHANCED ANALYSIS WITH HYBRID ALIGNMENT COMPLETED SUCCESSFULLY")
+        logger.info("=" * 80)
+        
+        return {
+            'ortholog_df': ortholog_df,
+            'paralog_df': paralog_df,
+            'synteny_df': synteny_df,
+            'mapping_df': mapping_df,
+            'rearrangement_df': rearrangement_df,
+            'inversion_df': inversion_df,
+            'first_quality': first_quality,
+            'second_quality': second_quality,
+            'output_dir': output_dir,
+            'config': config
+        }
+        
+    except Exception as e:
+        logger.error(f"Analysis failed: {str(e)}")
+        if config.get('enable_debug_output', False):
+            import traceback
+            traceback.print_exc()
+        raise
+
 def create_enhanced_visualizations(output_dir, results_dict, config):
     """
     Create comprehensive visualizations including dotplots, synteny maps, and summary plots
-    """
-    import matplotlib.pyplot as plt
-    import matplotlib.patches as patches
-    import seaborn as sns
-    import os
-    
+    """    
     plots_dir = os.path.join(output_dir, 'plots')
     os.makedirs(plots_dir, exist_ok=True)
     
@@ -2539,174 +2722,8 @@ def create_rearrangement_summary_plot(results_dict, ax):
     if 'type' in rearr_df.columns:
         type_counts = rearr_df['type'].value_counts()
         colors = plt.cm.Set2(range(len(type_counts)))
-        ax.pie(type_counts.values, labels=type_counts.index)
-               
-def generate_comprehensive_report(output_dir, results):
-    """Generate comprehensive analysis report"""
-    reports_dir = output_dir / 'reports'
-    
-    # This would contain detailed report generation
-    logger.info(f"  Comprehensive report would be generated in {reports_dir}")
-    logger.info("  - Executive summary with key findings")
-    logger.info("  - Detailed statistical analysis")
-    logger.info("  - Quality assessment report")
-    logger.info("  - Methodological documentation")
-
-################################################################################
-# MAIN ANALYSIS RUNNER
-################################################################################
-
-def run_complete_enhanced_analysis_with_hybrid(config=None):
-    """Run complete enhanced synteny and inversion analysis with hybrid alignment"""
-    if config is None:
-        config = ENHANCED_HYBRID_CONFIG
-    
-    logger.info("=" * 80)
-    logger.info("ENHANCED INTEGRATED SYNTENY AND INVERSION ANALYZER")
-    logger.info("With Hybrid Alignment System (Minimap2 + Biopython)")
-    logger.info("=" * 80)
-    
-    # Create output directory
-    output_dir = create_output_directory(config)
-    logger.info(f"Output directory: {output_dir}")
-    
-    try:
-        # Phase 1: Enhanced BUSCO Processing and Quality Assessment
-        logger.info("\n" + "=" * 50)
-        logger.info("PHASE 1: ENHANCED BUSCO PROCESSING")
-        logger.info("=" * 50)
-        
-        # Parse BUSCO data with enhanced validation
-        logger.info("Step 1.1: Parsing BUSCO tables")
-        first_busco_raw = enhanced_parse_busco_table(config['first_busco_path'], config)
-        second_busco_raw = enhanced_parse_busco_table(config['second_busco_path'], config)
-        
-        # Assess assembly quality
-        logger.info("Step 1.2: Assessing assembly quality")
-        first_quality = assess_assembly_quality(config['first_fasta_path'], first_busco_raw, config)
-        second_quality = assess_assembly_quality(config['second_fasta_path'], second_busco_raw, config)
-        
-        # Enhanced BUSCO filtering
-        logger.info("Step 1.3: Enhanced BUSCO filtering")
-        first_busco_filtered = enhanced_filter_busco_genes(first_busco_raw, config, first_quality)
-        second_busco_filtered = enhanced_filter_busco_genes(second_busco_raw, config, second_quality)
-        
-        # Enhanced sequence extraction
-        logger.info("Step 1.4: Enhanced sequence extraction")
-        aligner = setup_hybrid_sequence_aligner(config)
-        first_busco_seqs = extract_enhanced_busco_sequences(first_busco_filtered, config['first_fasta_path'], config)
-        second_busco_seqs = extract_enhanced_busco_sequences(second_busco_filtered, config['second_fasta_path'], config)
-        
-        # Phase 2: Enhanced Ortholog Mapping with Hybrid Alignment
-        logger.info("\n" + "=" * 50)
-        logger.info("PHASE 2: ENHANCED ORTHOLOG MAPPING (HYBRID ALIGNMENT)")
-        logger.info("=" * 50)
-        
-        logger.info("Step 2.1: Creating enhanced ortholog mapping with hybrid alignment")
-        
-        # Check cache first
-        cache_key = generate_cache_key(first_busco_seqs, second_busco_seqs, config)
-        cached_result = load_cached_alignment_results(cache_key, config)
-        
-        if cached_result:
-            logger.info("  Using cached alignment results")
-            ortholog_df, paralog_df = cached_result
-        else:
-            # Run hybrid alignment analysis
-            ortholog_df, paralog_df = run_hybrid_alignment_analysis(
-                first_busco_seqs, second_busco_seqs, config
-            )
-            
-            # Cache results
-            cache_alignment_results((ortholog_df, paralog_df), cache_key, config)
-        
-        # Phase 3: Enhanced Synteny Analysis
-        logger.info("\n" + "=" * 50)
-        logger.info("PHASE 3: ENHANCED SYNTENY ANALYSIS")
-        logger.info("=" * 50)
-        
-        logger.info("Step 3.1: Analyzing enhanced synteny blocks")
-        synteny_df, mapping_df = analyze_enhanced_synteny_blocks(ortholog_df, config)
-        
-        # Phase 4: Enhanced Rearrangement Analysis
-        logger.info("\n" + "=" * 50)
-        logger.info("PHASE 4: ENHANCED REARRANGEMENT ANALYSIS")
-        logger.info("=" * 50)
-        
-        logger.info("Step 4.1: Analyzing chromosome rearrangements")
-        rearrangement_df = analyze_enhanced_chromosome_rearrangements(ortholog_df, config)
-        
-        # Phase 5: Enhanced Inversion Analysis
-        logger.info("\n" + "=" * 50)
-        logger.info("PHASE 5: ENHANCED INVERSION ANALYSIS")
-        logger.info("=" * 50)
-        
-        logger.info("Step 5.1: Analyzing inversions")
-        inversion_df = analyze_enhanced_inversions(synteny_df, ortholog_df, config)
-        
-        # Phase 6: Results Integration and Reporting
-        logger.info("\n" + "=" * 50)
-        logger.info("PHASE 6: RESULTS INTEGRATION AND REPORTING")
-        logger.info("=" * 50)
-        
-        # Save all results
-        logger.info("Step 6.1: Saving analysis results")
-        save_enhanced_results(output_dir, {
-            'ortholog_df': ortholog_df,
-            'paralog_df': paralog_df,
-            'synteny_df': synteny_df,
-            'mapping_df': mapping_df,
-            'rearrangement_df': rearrangement_df,
-            'inversion_df': inversion_df,
-            'first_quality': first_quality,
-            'second_quality': second_quality
-        }, config)
-        
-        # Generate comprehensive visualizations
-        logger.info("Step 6.2: Creating enhanced visualizations")
-        create_enhanced_visualizations(output_dir, {
-            'ortholog_df': ortholog_df,
-            'synteny_df': synteny_df,
-            'rearrangement_df': rearrangement_df,
-            'inversion_df': inversion_df
-        }, config)
-        
-        # Generate final report
-        logger.info("Step 6.3: Generating comprehensive report")
-        generate_comprehensive_report(output_dir, {
-            'ortholog_df': ortholog_df,
-            'paralog_df': paralog_df,
-            'synteny_df': synteny_df,
-            'rearrangement_df': rearrangement_df,
-            'inversion_df': inversion_df,
-            'first_quality': first_quality,
-            'second_quality': second_quality,
-            'config': config
-        })
-        
-        logger.info("\n" + "=" * 80)
-        logger.info("ENHANCED ANALYSIS WITH HYBRID ALIGNMENT COMPLETED SUCCESSFULLY")
-        logger.info("=" * 80)
-        
-        return {
-            'ortholog_df': ortholog_df,
-            'paralog_df': paralog_df,
-            'synteny_df': synteny_df,
-            'mapping_df': mapping_df,
-            'rearrangement_df': rearrangement_df,
-            'inversion_df': inversion_df,
-            'first_quality': first_quality,
-            'second_quality': second_quality,
-            'output_dir': output_dir,
-            'config': config
-        }
-        
-    except Exception as e:
-        logger.error(f"Analysis failed: {str(e)}")
-        if config.get('enable_debug_output', False):
-            import traceback
-            traceback.print_exc()
-        raise
+        ax.pie(type_counts.values, labels=type_counts.index, autopct='%1.0f%%', colors=colors, textprops={'fontsize': 8})
+    ax.set_title('Rearrangement Types', fontsize=10)
 
 ################################################################################
 # MAIN EXECUTION
