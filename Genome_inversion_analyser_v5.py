@@ -70,11 +70,11 @@ ENHANCED_HYBRID_CONFIG = {
     'quality_report_csv': 'v4/assembly_quality_report.csv',
     
     # ==== HYBRID ALIGNMENT CONFIGURATION ====
-    'alignment_strategy': 'hybrid',  # 'biopython', 'minimap2', or 'hybrid'
+    'alignment_strategy': 'minimap2',  # 'biopython', 'minimap2', or 'hybrid'
     
     # Sequence length thresholds for alignment method selection
-    'short_sequence_threshold': 500,      # BP - use Biopython below this
-    'long_sequence_threshold': 1500,      # BP - use Minimap2 above this
+    'short_sequence_threshold': 100,      # BP - use Biopython below this
+    'long_sequence_threshold': 500,      # BP - use Minimap2 above this
     'buffer_zone_method': 'dual',         # 'biopython', 'minimap2', or 'dual'
     
     # Minimap2 specific settings
