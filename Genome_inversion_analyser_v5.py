@@ -51,6 +51,7 @@ logger = logging.getLogger(__name__)
 
 # Enhanced configuration with hybrid alignment settings
 ENHANCED_HYBRID_CONFIG = {
+    'name': 'ENHANCED HYBRID',
     # ==== INPUT FILES ====
     'first_fasta_path': 'GCA_910594885.2_idBibMarc1.2_genomic.fna',
     'second_fasta_path': 'GCA_958336335.1_idDilFebr1.1_genomic.fna',
@@ -199,7 +200,7 @@ ENHANCED_HYBRID_CONFIG = {
 # Fast configuration for quick testing (Biopython only, minimal features)
 FAST_HYBRID_CONFIG = {
     **ENHANCED_HYBRID_CONFIG,  # Inherit all settings
-    
+    'name': 'FAST HYBRID',     # Override the name     
     # Override for speed
     'alignment_strategy': 'biopython',     # Skip minimap2 for simplicity
     'short_sequence_threshold': 400,     # Force all sequences through Biopython
@@ -231,6 +232,7 @@ FAST_HYBRID_CONFIG = {
 
 # Complete configuration (original, all features)
 COMPLETE_ENHANCED_CONFIG = {
+    'name': 'COMPLETE ENHANCED',
     **ENHANCED_HYBRID_CONFIG,
     'alignment_strategy': 'biopython',  # Use only Biopython for maximum accuracy
     'enable_translation_check': True,
@@ -2212,11 +2214,7 @@ if __name__ == "__main__":
         
         # Print comprehensive summary
         print("\n" + "=" * 80)
-        config_name = {
-            FAST_HYBRID_CONFIG: "FAST HYBRID",
-            ENHANCED_HYBRID_CONFIG: "ENHANCED HYBRID", 
-            COMPLETE_ENHANCED_CONFIG: "COMPLETE ENHANCED"
-        }.get(config, "UNKNOWN")
+        config_name = config.get('name', 'UNKNOWN')
         print(f"{config_name} ANALYSIS SUMMARY")
         print("=" * 80)
         
