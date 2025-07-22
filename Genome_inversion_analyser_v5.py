@@ -963,18 +963,38 @@ def run_minimap2_alignment(sequence_pairs, config):
             query_file, target_file, query_map, target_map = create_minimap2_fasta(sequence_pairs, temp_path)
             output_file = temp_path / "alignments.paf"
             
-            # Build minimap2 command
-            cmd = [
-                'minimap2',
-                config.get('minimap2_preset', '--sr'),
-                '-k', str(config.get('minimap2_kmer_size', 13)),
-                '-t', str(config.get('minimap2_threads', 4)),
-                '--score-N', str(config.get('minimap2_min_score', 100)),
-                config.get('minimap2_extra_flags', '-c --cs'),
-                str(target_file),
-                str(query_file)
-            ]
-            
+            def build_minimap2_command(config, input1, input2, output_file=None):
+                """
+                Build proper minimap2 command without extra parameters
+                """
+                cmd_parts = ["minimap2"]
+                
+                # Add preset
+                if config.get('minimap2_preset'):
+                    cmd_parts.append(config['minimap2_preset'])
+                
+                # Add threads
+                if config.get('minimap2_threads'):
+                    cmd_parts.extend(["-t", str(config['minimap2_threads'])])
+                
+                # Add k-mer size
+                if config.get('minimap2_kmer_size'):
+                    cmd_parts.extend(["-k", str(config['minimap2_kmer_size'])])
+                
+                # Add extra flags (be careful here!)
+                extra_flags = config.get('minimap2_extra_flags', '')
+                if extra_flags:
+                    cmd_parts.extend(extra_flags.split())
+                
+                # Add input files
+                cmd_parts.extend([input1, input2])
+                
+                # Add output redirection if needed
+                if output_file:
+                    cmd_parts.extend([">", output_file])
+                
+                return cmd_parts
+
             # Remove empty flags
             cmd = [c for c in cmd if c.strip()]
             
@@ -982,18 +1002,19 @@ def run_minimap2_alignment(sequence_pairs, config):
             if config.get('detailed_alignment_logging', False):
                 logger.info(f"    Running minimap2: {' '.join(cmd[:5])}...")
             
+            cmd_parts = build_minimap2_command(config, file1, file2)  # do NOT pass output_file here
+
             with open(output_file, 'w') as out_f:
-                process = subprocess.run(
-                    cmd, 
-                    stdout=out_f, 
-                    stderr=subprocess.PIPE, 
+                result = subprocess.run(
+                    cmd_parts,
+                    stdout=out_f,
+                    stderr=subprocess.PIPE,
                     timeout=config.get('timeout_per_alignment', 30) * len(sequence_pairs),
                     text=True
                 )
-            
-            if process.returncode != 0:
-                logger.warning(f"Minimap2 failed: {process.stderr}")
-                return []
+
+            if result.returncode != 0:
+                print(f"Minimap2 failed: {result.stderr}")
             
             # Parse PAF output
             results = parse_minimap2_paf(output_file, sequence_pairs, query_map, target_map, config)
@@ -1284,6 +1305,54 @@ def run_simple_biopython_alignment(sequence_pairs, config):
                 logger.info(f"    Processed {processed}/{len(sequence_pairs)} sequence pairs ({processed/len(sequence_pairs)*100:.1f}%)")
     
     return all_results
+
+def run_parallel_biopython_alignment(seq_pairs, config, max_workers=None):
+    """
+    Run parallel pairwise alignment using modern Bio.Align.PairwiseAligner
+    """
+    from concurrent.futures import ProcessPoolExecutor
+    from Bio.Align import PairwiseAligner
+    import multiprocessing
+    
+    if max_workers is None:
+        max_workers = min(4, multiprocessing.cpu_count())
+    
+    def align_single_pair(pair_data):
+        seq1, seq2, align_config = pair_data
+        try:
+            aligner = PairwiseAligner()
+            aligner.match_score = align_config.get('biopython_match_score', 2)
+            aligner.mismatch_score = align_config.get('biopython_mismatch_score', -1)
+            aligner.open_gap_score = align_config.get('biopython_gap_open_score', -2)
+            aligner.extend_gap_score = align_config.get('biopython_gap_extend_score', -0.5)
+            aligner.mode = align_config.get('biopython_mode', 'local')
+            
+            alignments = aligner.align(seq1, seq2)
+            if alignments:
+                best_alignment = alignments[0]
+                return {
+                    'score': best_alignment.score,
+                    'identity': best_alignment.counts().identities / len(best_alignment),
+                    'alignment_length': len(best_alignment),
+                    'seq1_coverage': best_alignment.aligned[0].shape[0] / len(seq1) if len(seq1) > 0 else 0,
+                    'seq2_coverage': best_alignment.aligned[1].shape[0] / len(seq2) if len(seq2) > 0 else 0
+                }
+            return None
+        except Exception as e:
+            print(f"Alignment failed: {e}")
+            return None
+    
+    # Prepare data for parallel processing
+    pair_data = [(seq1, seq2, config) for seq1, seq2 in seq_pairs]
+    
+    try:
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            results = list(executor.map(align_single_pair, pair_data))
+        return [r for r in results if r is not None]
+    except Exception as e:
+        print(f"Parallel processing failed: {e}")
+        # Fallback to sequential processing
+        return [align_single_pair(pd) for pd in pair_data]
 
 def normalize_alignment_scores(alignment_results, config):
     """Normalize alignment scores from different methods to a unified scale"""
@@ -1997,28 +2066,55 @@ def save_enhanced_results(output_dir, results, config):
     
     logger.info(f"  Results saved to {data_dir}")
 
-def create_enhanced_visualizations(output_dir, results, config):
-    """Create enhanced visualizations"""
-    plots_dir = output_dir / 'plots'
+def create_enhanced_visualizations(output_dir, results_dict, config):
+    """
+    Create actual plots instead of just printing placeholders
+    """
+    import matplotlib.pyplot as plt
+    import os
     
-    # This would contain comprehensive visualization implementations
-    # For now, creating placeholder message
-    logger.info(f"  Enhanced visualizations would be created in {plots_dir}")
-    logger.info("  - Synteny dotplots with confidence coloring")
-    logger.info("  - Inversion landscape plots")
-    logger.info("  - Chromosome rearrangement networks")
-    logger.info("  - Quality assessment dashboards")
+    plots_dir = os.path.join(output_dir, 'plots')
+    os.makedirs(plots_dir, exist_ok=True)
+    
+    # Simple ortholog distribution plot
+    if 'ortholog_df' in results_dict and not results_dict['ortholog_df'].empty:
+        plt.figure(figsize=(10, 6))
+        df = results_dict['ortholog_df']
+        
+        if 'similarity' in df.columns:
+            plt.hist(df['similarity'], bins=30, alpha=0.7, edgecolor='black')
+            plt.xlabel('Similarity Score')
+            plt.ylabel('Number of Orthologs')
+            plt.title('Distribution of Ortholog Similarities')
+            plt.savefig(os.path.join(plots_dir, 'ortholog_similarities.png'), dpi=300)
+            plt.close()
+            print(f"  ✓ Created ortholog similarity plot")
+    
+    print(f"  Plots saved to: {plots_dir}")
 
-def generate_comprehensive_report(output_dir, results):
-    """Generate comprehensive analysis report"""
-    reports_dir = output_dir / 'reports'
+def generate_comprehensive_report(output_dir, results_dict):
+    """
+    Generate actual text report instead of placeholder
+    """
+    import os
+    reports_dir = os.path.join(output_dir, 'reports')
+    os.makedirs(reports_dir, exist_ok=True)
     
-    # This would contain detailed report generation
-    logger.info(f"  Comprehensive report would be generated in {reports_dir}")
-    logger.info("  - Executive summary with key findings")
-    logger.info("  - Detailed statistical analysis")
-    logger.info("  - Quality assessment report")
-    logger.info("  - Methodological documentation")
+    report_file = os.path.join(reports_dir, 'analysis_summary.txt')
+    
+    with open(report_file, 'w') as f:
+        f.write("GENOME SYNTENY AND INVERSION ANALYSIS REPORT\n")
+        f.write("=" * 50 + "\n\n")
+        
+        if 'ortholog_df' in results_dict:
+            df = results_dict['ortholog_df']
+            f.write(f"ORTHOLOG ANALYSIS:\n")
+            f.write(f"  Total orthologs found: {len(df)}\n")
+            if 'similarity' in df.columns:
+                f.write(f"  Average similarity: {df['similarity'].mean():.3f}\n")
+                f.write(f"  Similarity range: {df['similarity'].min():.3f} - {df['similarity'].max():.3f}\n")
+    
+    print(f"  ✓ Report saved to: {report_file}")
 
 ################################################################################
 # MAIN ANALYSIS RUNNER
@@ -2214,6 +2310,7 @@ if __name__ == "__main__":
         
         # Print comprehensive summary
         print("\n" + "=" * 80)
+
         config_name = config.get('name', 'UNKNOWN')
         print(f"{config_name} ANALYSIS SUMMARY")
         print("=" * 80)
