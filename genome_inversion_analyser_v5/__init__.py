@@ -42,7 +42,7 @@ from .analysis import (
 )
 
 # Import quality assessment
-from .quality import AssemblyQualityAnalyzer
+# from .quality import AssemblyQualityAnalyzer
 
 # Import visualization components
 from .visualization import (
@@ -117,7 +117,7 @@ __all__ = [
     'StatisticalValidator',
     
     # Quality assessment
-    'AssemblyQualityAnalyzer',
+    # 'AssemblyQualityAnalyzer',
     
     # Visualization
     'SyntenyDotplot',
