@@ -10,11 +10,19 @@ Orchestrates synteny, inversion, rearrangement, and quality analysis.
 import pandas as pd
 from typing import Dict, Tuple, Any
 
+# Additional imports for enhanced/hybrid workflow
+from ..config import ENHANCED_HYBRID_CONFIG
+from ..utils import create_output_directory, generate_cache_key
+from ..io_utils.busco_parser import BuscoParser
+from ..io_utils.sequence_extractor import SequenceExtractor
+from ..alignment.workflow import run_hybrid_alignment_analysis
 from .synteny_analyzer import SyntenyAnalyzer
 from .inversion_detector import InversionDetector
 from .rearrangement_analyzer import RearrangementAnalyzer
 from .quality_assessor import QualityAssessor
 from .statistical_validator import StatisticalValidator
+from ..visualization.dashboard import create_enhanced_visualizations
+from ..reporting.report_generator import generate_comprehensive_report
 from ..logger import get_logger
 
 logger = get_logger()
@@ -104,162 +112,135 @@ class AnalysisWorkflow:
         if self.config.get('enable_statistical_validation', False):
             logger.info("Step 5: Performing statistical validation...")
             results['synteny_validation'] = self.statistical_validator.validate_synteny_results(
+                results['synteny_df'], ortholog_df
+            )
+        return results
+
+    def run_complete_enhanced_analysis_with_hybrid(self, config=None):
+        """
+        Run the complete enhanced analysis workflow using the hybrid alignment strategy.
+        This orchestrates BUSCO parsing, sequence extraction, hybrid alignment, synteny/inversion/rearrangement analysis,
+        quality assessment, statistical validation, visualization, and reporting.
+        Args:
+            config: Optional configuration object. If None, uses ENHANCED_HYBRID_CONFIG.
+        Returns:
+            Dictionary with all analysis results and generated outputs.
+        """
+        # Use default config if not provided
+        if config is None:
+            config = ENHANCED_HYBRID_CONFIG
+
+        # Step 1: Prepare output directory and cache key
+        output_dir = config.get('base_output_dir', 'results')
+        create_output_directory(output_dir)
+        cache_key = generate_cache_key(config)
+
+        # Step 2: Parse BUSCO tables
+        logger.info("Parsing BUSCO tables...")
+        first_busco_parser = BuscoParser(config.get('first_busco_path'))
+        first_busco_df = first_busco_parser.parse_busco_table(config)
+        second_busco_parser = BuscoParser(config.get('second_busco_path'))
+        second_busco_df = second_busco_parser.parse_busco_table(config)
+
+        # Step 3: Extract BUSCO gene sequences
+        logger.info("Extracting BUSCO gene sequences...")
+        seq_extractor_1 = SequenceExtractor(config.get('first_fasta_path'))
+        busco_seqs_1 = seq_extractor_1.extract_busco_sequences(first_busco_df, config)
+        seq_extractor_2 = SequenceExtractor(config.get('second_fasta_path'))
+        busco_seqs_2 = seq_extractor_2.extract_busco_sequences(second_busco_df, config)
+
+        # Step 4: Run hybrid alignment analysis
+        logger.info("Running hybrid alignment analysis...")
+        alignment_results, sequence_pairs = run_hybrid_alignment_analysis(
+            busco_seqs_1, busco_seqs_2, config
+        )
+
+        # Step 5: Orthology processing (score, filter, convert)
+        logger.info("Processing orthologs...")
+        from ..orthology.workflow import OrthologyWorkflow
+        orthology_workflow = OrthologyWorkflow(config)
+        ortholog_df, paralog_df = orthology_workflow.process_alignment_results(
+            alignment_results, sequence_pairs
+        )
+
+        # Step 6: Synteny analysis
+        logger.info("Analyzing synteny blocks...")
+        synteny_df, mapping_df = self.synteny_analyzer.analyze_synteny_blocks(ortholog_df)
+
+        # Step 7: Inversion detection
+        logger.info("Detecting inversions...")
+        inversion_df = self.inversion_detector.detect_inversions(synteny_df, ortholog_df)
+
+        # Step 8: Rearrangement analysis
+        logger.info("Analyzing chromosome rearrangements...")
+        rearrangement_df = self.rearrangement_analyzer.analyze_chromosome_rearrangements(ortholog_df)
+
+        # Step 9: Quality assessment
+        logger.info("Assessing assembly quality...")
+        first_quality = self.quality_assessor.assess_assembly_quality(
+            config.get('first_fasta_path'), first_busco_df
+        )
+        second_quality = self.quality_assessor.assess_assembly_quality(
+            config.get('second_fasta_path'), second_busco_df
+        )
+        quality_comparison = self.quality_assessor.compare_assembly_qualities(
+            first_quality, second_quality
+        )
+
+        # Step 10: Statistical validation (if enabled)
+        synteny_validation = None
+        inversion_validation = None
+        if self.config.get('enable_statistical_validation', False):
+            logger.info("Performing statistical validation...")
+            synteny_validation = self.statistical_validator.validate_synteny_results(
                 synteny_df, ortholog_df
             )
-            results['inversion_validation'] = self.statistical_validator.validate_inversion_results(
+            inversion_validation = self.statistical_validator.validate_inversion_results(
                 inversion_df
             )
-        
-        # Step 6: Generate comprehensive statistics
-        logger.info("Step 6: Generating comprehensive statistics...")
-        results['statistics'] = self._generate_comprehensive_statistics(results)
-        
-        # Log final summary
-        self._log_analysis_summary(results)
-        
-        return results
-    
-    def _generate_comprehensive_statistics(self, results: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate comprehensive statistics for all analysis components."""
-        stats = {}
-        
-        # Synteny statistics
-        if 'synteny_df' in results and 'mapping_df' in results:
-            stats['synteny'] = self.synteny_analyzer.get_synteny_statistics(
-                results['synteny_df'], results['mapping_df']
-            )
-        
-        # Inversion statistics
-        if 'inversion_df' in results:
-            stats['inversions'] = self.inversion_detector.get_inversion_statistics(
-                results['inversion_df']
-            )
-        
-        # Rearrangement statistics
-        if 'rearrangement_df' in results:
-            stats['rearrangements'] = self.rearrangement_analyzer.get_rearrangement_statistics(
-                results['rearrangement_df']
-            )
-        
-        # Quality statistics
-        if 'first_quality' in results:
-            stats['first_genome_quality'] = self.quality_assessor.get_quality_statistics(
-                results['first_quality']
-            )
-        
-        if 'second_quality' in results:
-            stats['second_genome_quality'] = self.quality_assessor.get_quality_statistics(
-                results['second_quality']
-            )
-        
-        # Overall summary statistics
-        stats['summary'] = self._calculate_summary_statistics(results)
-        
-        return stats
-    
-    def _calculate_summary_statistics(self, results: Dict[str, Any]) -> Dict[str, Any]:
-        """Calculate high-level summary statistics."""
-        summary = {}
-        
-        # Count major findings
-        summary['total_synteny_blocks'] = len(results.get('synteny_df', []))
-        summary['total_inversions'] = len(results.get('inversion_df', []))
-        summary['total_rearrangements'] = len(results.get('rearrangement_df', []))
-        
-        # Calculate structural variation rates - need to pass ortholog count
-        # Try to infer ortholog count from synteny blocks or passed data
-        total_orthologs = 0
-        if 'synteny_df' in results and len(results['synteny_df']) > 0:
-            total_orthologs = results['synteny_df']['block_size'].sum()
-        elif 'mapping_df' in results and len(results['mapping_df']) > 0:
-            total_orthologs = results['mapping_df']['gene_count'].sum()
-        
-        if total_orthologs > 0:
-            summary['inversion_rate'] = summary['total_inversions'] / total_orthologs
-            summary['rearrangement_rate'] = summary['total_rearrangements'] / total_orthologs
-        
-        # Quality indicators
-        if 'first_quality' in results and 'second_quality' in results:
-            summary['average_quality_score'] = (
-                results['first_quality']['quality_score'] + 
-                results['second_quality']['quality_score']
-            ) / 2
-            
-            summary['quality_classes'] = [
-                results['first_quality']['quality_class'],
-                results['second_quality']['quality_class']
-            ]
-        
-        # Validation status
-        if 'synteny_validation' in results:
-            summary['synteny_validated'] = results['synteny_validation'].get('overall_validation', {}).get('validated', False)
-        
-        if 'inversion_validation' in results:
-            summary['inversions_validated'] = results['inversion_validation'].get('overall_validation', {}).get('validated', False)
-        
-        return summary
-    
-    def _log_analysis_summary(self, results: Dict[str, Any]):
-        """Log comprehensive analysis summary."""
-        logger.info("Analysis pipeline completed successfully!")
-        
-        # Log major findings
-        logger.info("Major findings:")
-        logger.info(f"  Synteny blocks: {len(results.get('synteny_df', []))}")
-        logger.info(f"  Inversions detected: {len(results.get('inversion_df', []))}")
-        logger.info(f"  Rearrangements detected: {len(results.get('rearrangement_df', []))}")
-        
-        # Log quality assessment
-        if 'first_quality' in results and 'second_quality' in results:
-            q1 = results['first_quality']
-            q2 = results['second_quality']
-            logger.info("Assembly quality:")
-            logger.info(f"  First genome: {q1['quality_class']} (score: {q1['quality_score']:.3f})")
-            logger.info(f"  Second genome: {q2['quality_class']} (score: {q2['quality_score']:.3f})")
-        
-        # Log validation status
-        validation_status = []
-        if 'synteny_validation' in results:
-            synteny_valid = results['synteny_validation'].get('overall_validation', {}).get('validated', False)
-            validation_status.append(f"Synteny: {'✓' if synteny_valid else '✗'}")
-        
-        if 'inversion_validation' in results:
-            inversion_valid = results['inversion_validation'].get('overall_validation', {}).get('validated', False)
-            validation_status.append(f"Inversions: {'✓' if inversion_valid else '✗'}")
-        
-        if validation_status:
-            logger.info(f"Statistical validation: {', '.join(validation_status)}")
-    
-    def get_analysis_configuration(self) -> Dict[str, Any]:
-        """Get current analysis configuration for reporting."""
-        return {
-            'synteny_parameters': {
-                'min_genes_per_block': getattr(self.synteny_analyzer, 'min_genes_per_block', 3),
-                'min_synteny_block_size': getattr(self.synteny_analyzer, 'min_synteny_block_size', 3),
-                'correlation_threshold': getattr(self.synteny_analyzer, 'correlation_threshold', 0.5),
-                'strand_consistency_threshold': getattr(self.synteny_analyzer, 'strand_consistency_threshold', 0.6)
-            },
-            'inversion_parameters': {
-                'min_inversion_size': self.inversion_detector.min_inversion_size,
-                'enable_single_gene': self.inversion_detector.enable_single_gene,
-                'enable_micro_inversions': self.inversion_detector.enable_micro_inversions,
-                'confidence_threshold': self.inversion_detector.confidence_threshold
-            },
-            'rearrangement_parameters': {
-                'enable_translocation_detection': self.rearrangement_analyzer.enable_translocation_detection,
-                'min_genes_for_rearrangement': self.rearrangement_analyzer.min_genes_for_rearrangement,
-                'rearrangement_confidence_threshold': self.rearrangement_analyzer.rearrangement_confidence_threshold
-            },
-            'quality_parameters': {
-                'enable_assessment': self.quality_assessor.enable_assessment,
-                'enable_adaptive_thresholds': self.quality_assessor.enable_adaptive_thresholds,
-                'high_quality_busco_threshold': self.quality_assessor.high_quality_busco_threshold,
-                'high_quality_n50_threshold': self.quality_assessor.high_quality_n50_threshold
-            },
-            'validation_parameters': {
-                'enable_validation': self.statistical_validator.enable_validation,
-                'confidence_level': self.statistical_validator.confidence_level,
-                'bootstrap_iterations': self.statistical_validator.bootstrap_iterations,
-                'significance_threshold': self.statistical_validator.significance_threshold
-            }
+
+        # Step 11: Visualization
+        logger.info("Generating visualizations...")
+        create_enhanced_visualizations(
+            ortholog_df=ortholog_df,
+            synteny_df=synteny_df,
+            inversion_df=inversion_df,
+            rearrangement_df=rearrangement_df,
+            quality_report={'first': first_quality, 'second': second_quality, 'comparison': quality_comparison},
+            output_dir=output_dir,
+            config=config
+        )
+
+        # Step 12: Reporting
+        logger.info("Generating comprehensive report...")
+        report_path = generate_comprehensive_report(
+            ortholog_df=ortholog_df,
+            synteny_df=synteny_df,
+            inversion_df=inversion_df,
+            rearrangement_df=rearrangement_df,
+            paralog_df=paralog_df,
+            quality_report={'first': first_quality, 'second': second_quality, 'comparison': quality_comparison},
+            synteny_validation=synteny_validation,
+            inversion_validation=inversion_validation,
+            output_dir=output_dir,
+            config=config
+        )
+
+        # Collate and return all results
+        results = {
+            'ortholog_df': ortholog_df,
+            'paralog_df': paralog_df,
+            'synteny_df': synteny_df,
+            'mapping_df': mapping_df,
+            'inversion_df': inversion_df,
+            'rearrangement_df': rearrangement_df,
+            'first_quality': first_quality,
+            'second_quality': second_quality,
+            'quality_comparison': quality_comparison,
+            'synteny_validation': synteny_validation,
+            'inversion_validation': inversion_validation,
+            'visualizations': output_dir,
+            'report_path': report_path
         }
+        logger.info("Enhanced hybrid analysis complete.")
+        return results

@@ -16,6 +16,27 @@ from .config import (
 )
 from .logger import setup_logger, get_logger
 
+# Import all the analysis functions that were in the unmodularized version
+# These need to be implemented in separate modules or imported from core.py
+from .core import (
+    create_output_directory,
+    enhanced_parse_busco_table,
+    assess_assembly_quality,
+    enhanced_filter_busco_genes,
+    setup_hybrid_sequence_aligner,
+    extract_enhanced_busco_sequences,
+    generate_cache_key,
+    load_cached_alignment_results,
+    run_hybrid_alignment_analysis,
+    cache_alignment_results,
+    analyze_enhanced_synteny_blocks,
+    analyze_enhanced_chromosome_rearrangements,
+    analyze_enhanced_inversions,
+    save_enhanced_results,
+    create_enhanced_visualizations,
+    generate_comprehensive_report
+)
+
 def parse_arguments():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
@@ -86,15 +107,6 @@ Examples:
     
     return parser.parse_args()
 
-def select_config(mode):
-    """Select configuration based on mode."""
-    configs = {
-        'fast': FAST_HYBRID_CONFIG,
-        'hybrid': ENHANCED_HYBRID_CONFIG,
-        'complete': COMPLETE_ENHANCED_CONFIG
-    }
-    return configs[mode]
-
 def override_config_from_args(config, args):
     """Override configuration values from command line arguments."""
     if args.first_genome:
@@ -112,34 +124,164 @@ def override_config_from_args(config, args):
 
 def run_enhanced_analysis(config):
     """
-    Main analysis workflow - placeholder for Phase 2 implementation.
+    Main analysis workflow
     
     Args:
-        config: AnalysisConfig object with analysis parameters
+        config: Configuration dictionary with analysis parameters
         
     Returns:
         Dictionary with analysis results
     """
     logger = get_logger()
     
-    logger.info("Starting enhanced genome analysis...")
-    logger.info(f"Input genomes: {config.get('first_fasta_path')} vs {config.get('second_fasta_path')}")
-    logger.info(f"BUSCO tables: {config.get('first_busco_path')} vs {config.get('second_busco_path')}")
-    logger.info(f"Alignment strategy: {config.get('alignment_strategy')}")
+    logger.info("=" * 80)
+    logger.info("ENHANCED INTEGRATED SYNTENY AND INVERSION ANALYZER")
+    logger.info("With Hybrid Alignment System (Minimap2 + Biopython)")
+    logger.info("=" * 80)
     
-    # Placeholder results structure
-    results = {
-        'status': 'success',
-        'config': config.to_dict(),
-        'synteny_blocks': [],
-        'inversions': [],
-        'rearrangements': [],
-        'quality_metrics': {},
-        'statistics': {}
-    }
+    # Create output directory
+    output_dir = create_output_directory(config)
+    logger.info(f"Output directory: {output_dir}")
     
-    logger.info("Analysis workflow completed (Phase 1 placeholder)")
-    return results
+    try:
+        # Phase 1: Enhanced BUSCO Processing and Quality Assessment
+        logger.info("\n" + "=" * 50)
+        logger.info("PHASE 1: ENHANCED BUSCO PROCESSING")
+        logger.info("=" * 50)
+        
+        # Parse BUSCO data with enhanced validation
+        logger.info("Step 1.1: Parsing BUSCO tables")
+        first_busco_raw = enhanced_parse_busco_table(config['first_busco_path'], config)
+        second_busco_raw = enhanced_parse_busco_table(config['second_busco_path'], config)
+        
+        # Assess assembly quality
+        logger.info("Step 1.2: Assessing assembly quality")
+        first_quality = assess_assembly_quality(config['first_fasta_path'], first_busco_raw, config)
+        second_quality = assess_assembly_quality(config['second_fasta_path'], second_busco_raw, config)
+        
+        # Enhanced BUSCO filtering
+        logger.info("Step 1.3: Enhanced BUSCO filtering")
+        first_busco_filtered = enhanced_filter_busco_genes(first_busco_raw, config, first_quality)
+        second_busco_filtered = enhanced_filter_busco_genes(second_busco_raw, config, second_quality)
+        
+        # Enhanced sequence extraction
+        logger.info("Step 1.4: Enhanced sequence extraction")
+        aligner = setup_hybrid_sequence_aligner(config)
+        first_busco_seqs = extract_enhanced_busco_sequences(first_busco_filtered, config['first_fasta_path'], config)
+        second_busco_seqs = extract_enhanced_busco_sequences(second_busco_filtered, config['second_fasta_path'], config)
+        
+        # Phase 2: Enhanced Ortholog Mapping with Hybrid Alignment
+        logger.info("\n" + "=" * 50)
+        logger.info("PHASE 2: ENHANCED ORTHOLOG MAPPING (HYBRID ALIGNMENT)")
+        logger.info("=" * 50)
+        
+        logger.info("Step 2.1: Creating enhanced ortholog mapping with hybrid alignment")
+        
+        # Check cache first
+        cache_key = generate_cache_key(first_busco_seqs, second_busco_seqs, config)
+        cached_result = load_cached_alignment_results(cache_key, config)
+        
+        if cached_result:
+            logger.info("  Using cached alignment results")
+            ortholog_df, paralog_df = cached_result
+        else:
+            # Run hybrid alignment analysis
+            ortholog_df, paralog_df = run_hybrid_alignment_analysis(
+                first_busco_seqs, second_busco_seqs, config
+            )
+            
+            # Cache results
+            cache_alignment_results((ortholog_df, paralog_df), cache_key, config)
+        
+        # Phase 3: Enhanced Synteny Analysis
+        logger.info("\n" + "=" * 50)
+        logger.info("PHASE 3: ENHANCED SYNTENY ANALYSIS")
+        logger.info("=" * 50)
+        
+        logger.info("Step 3.1: Analyzing enhanced synteny blocks")
+        synteny_df, mapping_df = analyze_enhanced_synteny_blocks(ortholog_df, config)
+        
+        # Phase 4: Enhanced Rearrangement Analysis
+        logger.info("\n" + "=" * 50)
+        logger.info("PHASE 4: ENHANCED REARRANGEMENT ANALYSIS")
+        logger.info("=" * 50)
+        
+        logger.info("Step 4.1: Analyzing chromosome rearrangements")
+        rearrangement_df = analyze_enhanced_chromosome_rearrangements(ortholog_df, config)
+        
+        # Phase 5: Enhanced Inversion Analysis
+        logger.info("\n" + "=" * 50)
+        logger.info("PHASE 5: ENHANCED INVERSION ANALYSIS")
+        logger.info("=" * 50)
+        
+        logger.info("Step 5.1: Analyzing inversions")
+        inversion_df = analyze_enhanced_inversions(synteny_df, ortholog_df, config)
+        
+        # Phase 6: Results Integration and Reporting
+        logger.info("\n" + "=" * 50)
+        logger.info("PHASE 6: RESULTS INTEGRATION AND REPORTING")
+        logger.info("=" * 50)
+        
+        # Save all results
+        logger.info("Step 6.1: Saving analysis results")
+        save_enhanced_results(output_dir, {
+            'ortholog_df': ortholog_df,
+            'paralog_df': paralog_df,
+            'synteny_df': synteny_df,
+            'mapping_df': mapping_df,
+            'rearrangement_df': rearrangement_df,
+            'inversion_df': inversion_df,
+            'first_quality': first_quality,
+            'second_quality': second_quality
+        }, config)
+        
+        # Generate comprehensive visualizations
+        logger.info("Step 6.2: Creating enhanced visualizations")
+        create_enhanced_visualizations(output_dir, {
+            'ortholog_df': ortholog_df,
+            'synteny_df': synteny_df,
+            'rearrangement_df': rearrangement_df,
+            'inversion_df': inversion_df
+        }, config)
+        
+        # Generate final report
+        logger.info("Step 6.3: Generating comprehensive report")
+        generate_comprehensive_report(output_dir, {
+            'ortholog_df': ortholog_df,
+            'paralog_df': paralog_df,
+            'synteny_df': synteny_df,
+            'rearrangement_df': rearrangement_df,
+            'inversion_df': inversion_df,
+            'first_quality': first_quality,
+            'second_quality': second_quality,
+            'config': config
+        })
+        
+        logger.info("\n" + "=" * 80)
+        logger.info("ENHANCED ANALYSIS WITH HYBRID ALIGNMENT COMPLETED SUCCESSFULLY")
+        logger.info("=" * 80)
+        
+        return {
+            'status': 'success',
+            'config': config,
+            'synteny_blocks': synteny_df.to_dict('records') if not synteny_df.empty else [],
+            'inversions': inversion_df.to_dict('records') if not inversion_df.empty else [],
+            'rearrangements': rearrangement_df.to_dict('records') if not rearrangement_df.empty else [],
+            'quality_metrics': {
+                'first_quality': first_quality,
+                'second_quality': second_quality
+            },
+            'statistics': {
+                'ortholog_pairs': len(ortholog_df),
+                'synteny_blocks_count': len(synteny_df),
+                'inversions_count': len(inversion_df),
+                'rearrangements_count': len(rearrangement_df)
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Analysis failed: {str(e)}")
+        raise
 
 def main():
     """Main entry point."""

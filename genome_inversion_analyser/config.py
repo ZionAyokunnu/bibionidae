@@ -1,4 +1,3 @@
-
 # =============================================================================
 # Configuration Management (config.py)
 # =============================================================================
@@ -58,6 +57,17 @@ class AnalysisConfig:
     def to_dict(self):
         """Return configuration as dictionary."""
         return self._config.copy()
+
+
+def select_config(mode):
+    """Select configuration based on mode."""
+    configs = {
+        'fast': FAST_HYBRID_CONFIG,
+        'hybrid': ENHANCED_HYBRID_CONFIG,
+        'complete': COMPLETE_ENHANCED_CONFIG
+    }
+    return configs[mode]
+
 
 # Enhanced configuration with hybrid alignment settings
 ENHANCED_HYBRID_CONFIG = AnalysisConfig({
