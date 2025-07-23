@@ -78,6 +78,7 @@ ENHANCED_HYBRID_CONFIG = {
     'buffer_zone_method': 'dual',         # 'biopython', 'minimap2', or 'dual'
     
     # Minimap2 specific settings
+    'minimap2_path': '/Users/za7/Documents/minimap2/minimap2',
     'minimap2_preset': '--sr',            # Short read preset for BUSCO-sized sequences
     'minimap2_kmer_size': 17,             # Smaller k-mer for better sensitivity
     'minimap2_threads': 3,                # CPU cores to use
@@ -254,12 +255,15 @@ FAST_HYBRID_CONFIG = {
 # Complete configuration (original, all features)
 COMPLETE_ENHANCED_CONFIG = {
     **ENHANCED_HYBRID_CONFIG,
-    'alignment_strategy': 'biopython',  # Use only Biopython for maximum accuracy
+    # CHANGE THIS LINE - use 'hybrid' instead of 'biopython'
+    'alignment_strategy': 'hybrid',     # ← This was your problem!
+    
+    # Keep all the enhanced features
     'enable_translation_check': True,
     'enable_gene_model_validation': True,
     'use_content_based_inversion': True,
     'enable_statistical_validation': True,
-    'enable_assembly_quality_assessment': True
+    'enable_assembly_quality_assessment': True,
 }
 
 ################################################################################
