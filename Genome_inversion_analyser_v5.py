@@ -1450,6 +1450,139 @@ def convert_alignment_results_to_ortholog_pairs(alignment_results, sequence_pair
     
     return ortholog_pairs
 
+# def run_hybrid_alignment_analysis(first_busco_df, second_busco_df, config):
+#     """Main orchestrator for hybrid alignment analysis"""
+#     logger.info("Running hybrid alignment analysis...")
+    
+#     # Find common BUSCO genes and create pairs
+#     first_buscos = {row['busco_id']: row for _, row in first_busco_df.iterrows()}
+#     second_buscos = {row['busco_id']: row for _, row in second_busco_df.iterrows()}
+#     common_buscos = set(first_buscos.keys()) & set(second_buscos.keys())
+    
+#     logger.info(f"  Species 1 BUSCOs: {len(first_buscos)}")
+#     logger.info(f"  Species 2 BUSCOs: {len(second_buscos)}")
+#     logger.info(f"  Common BUSCOs: {len(common_buscos)}")
+    
+#     # Create sequence pairs
+#     sequence_pairs = []
+#     for busco_id in common_buscos:
+#         pair = {
+#             'busco_id': busco_id,
+#             'first_gene': first_buscos[busco_id],
+#             'second_gene': second_buscos[busco_id]
+#         }
+#         sequence_pairs.append(pair)
+    
+#     # Partition sequences by length for optimal alignment method
+#     partitions = partition_sequences_by_length(sequence_pairs, config)
+    
+#     # Run alignments using appropriate methods
+#     all_results = []
+#     strategy = config.get('alignment_strategy', 'hybrid')
+    
+#     if strategy == 'hybrid':
+#         # Short sequences -> Biopython
+#         if partitions['short_pairs']:
+#             logger.info(f"  Running Biopython alignment on {len(partitions['short_pairs'])} short sequences...")
+#             try:
+#                 short_results = run_parallel_biopython_alignment(partitions['short_pairs'], config)
+#             except Exception as e:
+#                 logger.warning(f"Parallel alignment failed for short sequences: {e}")
+#                 short_results = run_simple_biopython_alignment(partitions['short_pairs'], config)
+#             all_results.extend(short_results)
+        
+#         # Long sequences -> Minimap2
+#         if partitions['long_pairs']:
+#             logger.info(f"  Running Minimap2 alignment on {len(partitions['long_pairs'])} long sequences...")
+#             long_results = run_minimap2_alignment(partitions['long_pairs'], config)
+#             all_results.extend(long_results)
+        
+#         # Buffer zone -> Both methods or fallback
+#         if partitions['buffer_pairs']:
+#             buffer_method = config.get('buffer_zone_method', 'dual')
+#             logger.info(f"  Processing {len(partitions['buffer_pairs'])} buffer zone sequences with {buffer_method} method...")
+            
+#             if buffer_method == 'dual' and config.get('cross_validate_buffer_zone', True):
+#                 # Run both methods and compare
+#                 try:
+#                     bio_results = run_parallel_biopython_alignment(partitions['buffer_pairs'], config)
+#                 except Exception as e:
+#                     logger.warning(f"Parallel alignment failed for buffer zone: {e}")
+#                     bio_results = run_simple_biopython_alignment(partitions['buffer_pairs'], config)
+#                 mm2_results = run_minimap2_alignment(partitions['buffer_pairs'], config)
+#                 buffer_results = select_best_buffer_results(bio_results, mm2_results, config)
+#             elif buffer_method == 'minimap2':
+#                 buffer_results = run_minimap2_alignment(partitions['buffer_pairs'], config)
+#             else:  # Default to Biopython
+#                 try:
+#                     buffer_results = run_parallel_biopython_alignment(partitions['buffer_pairs'], config)
+#                 except Exception as e:
+#                     logger.warning(f"Parallel alignment failed for buffer zone: {e}")
+#                     buffer_results = run_simple_biopython_alignment(partitions['buffer_pairs'], config)
+            
+#             all_results.extend(buffer_results)
+        
+#         # Mixed length pairs -> Biopython (safer for heterogeneous lengths)
+#         if partitions['mixed_pairs']:
+#             logger.info(f"  Running Biopython alignment on {len(partitions['mixed_pairs'])} mixed-length sequences...")
+#             try:
+#                 mixed_results = run_parallel_biopython_alignment(partitions['mixed_pairs'], config)
+#             except Exception as e:
+#                 logger.warning(f"Parallel alignment failed for mixed sequences: {e}")
+#                 mixed_results = run_simple_biopython_alignment(partitions['mixed_pairs'], config)
+#             all_results.extend(mixed_results)
+    
+#     elif strategy == 'minimap2':
+#         logger.info(f"  Running Minimap2 alignment on all {len(sequence_pairs)} sequences...")
+#         all_results = run_minimap2_alignment(sequence_pairs, config)
+    
+#     else:  # Biopython only
+#         logger.info(f"  Running Biopython alignment on all {len(sequence_pairs)} sequences...")
+#         try:
+#             all_results = run_parallel_biopython_alignment(sequence_pairs, config)
+#         except Exception as e:
+#             logger.warning(f"Parallel alignment failed: {e}")
+#             logger.info("  Falling back to simple sequential alignment...")
+#             all_results = run_simple_biopython_alignment(sequence_pairs, config)
+    
+#     # Normalize scores and calculate confidence
+#     logger.info("  Normalizing alignment scores and calculating confidence...")
+#     normalized_results = normalize_alignment_scores(all_results, config)
+    
+#     # Apply reciprocal best hit filtering
+#     if config.get('use_reciprocal_best_hits', True):
+#         logger.info("  Applying reciprocal best hit filtering...")
+#         filtered_results = apply_reciprocal_best_hit_filtering(normalized_results, config)
+#     else:
+#         filtered_results = normalized_results
+    
+#     # Convert results to ortholog pairs format
+#     ortholog_pairs = convert_alignment_results_to_ortholog_pairs(
+#         filtered_results, sequence_pairs, config
+#     )
+    
+#     # Report statistics
+#     logger.info(f"  Alignment results:")
+#     logger.info(f"    Total alignments attempted: {len(sequence_pairs)}")
+#     logger.info(f"    Successful alignments: {len(all_results)}")
+#     logger.info(f"    After RBH filtering: {len(filtered_results)}")
+#     logger.info(f"    Final ortholog pairs: {len(ortholog_pairs)}")
+    
+#     if filtered_results:
+#         method_counts = {}
+#         for result in filtered_results:
+#             method = result['method']
+#             method_counts[method] = method_counts.get(method, 0) + 1
+        
+#         logger.info(f"    Methods used: {method_counts}")
+        
+#         avg_identity = np.mean([r['identity'] for r in filtered_results])
+#         avg_confidence = np.mean([r['confidence'] for r in filtered_results])
+#         logger.info(f"    Average identity: {avg_identity:.3f}")
+#         logger.info(f"    Average confidence: {avg_confidence:.3f}")
+    
+#     return pd.DataFrame(ortholog_pairs), pd.DataFrame()  # Return empty paralog_df for compatibility
+
 def run_hybrid_alignment_analysis(first_busco_df, second_busco_df, config):
     """Main orchestrator for hybrid alignment analysis"""
     logger.info("Running hybrid alignment analysis...")
@@ -1473,14 +1606,25 @@ def run_hybrid_alignment_analysis(first_busco_df, second_busco_df, config):
         }
         sequence_pairs.append(pair)
     
+    # Check if minimap2 is available
+    minimap2_available = check_minimap2_available()
+    if not minimap2_available:
+        logger.warning("  Minimap2 not available, forcing Biopython-only mode")
+        config['alignment_strategy'] = 'biopython'
+    
+    # Get strategy from config, default to hybrid if minimap2 is available
+    strategy = config.get('alignment_strategy', 'hybrid' if minimap2_available else 'biopython')
+    logger.info(f"  Using alignment strategy: {strategy}")
+    
     # Partition sequences by length for optimal alignment method
     partitions = partition_sequences_by_length(sequence_pairs, config)
     
     # Run alignments using appropriate methods
     all_results = []
-    strategy = config.get('alignment_strategy', 'hybrid')
     
-    if strategy == 'hybrid':
+    if strategy == 'hybrid' and minimap2_available:
+        # HYBRID MODE: Use different methods for different sequence lengths
+        
         # Short sequences -> Biopython
         if partitions['short_pairs']:
             logger.info(f"  Running Biopython alignment on {len(partitions['short_pairs'])} short sequences...")
@@ -1495,6 +1639,13 @@ def run_hybrid_alignment_analysis(first_busco_df, second_busco_df, config):
         if partitions['long_pairs']:
             logger.info(f"  Running Minimap2 alignment on {len(partitions['long_pairs'])} long sequences...")
             long_results = run_minimap2_alignment(partitions['long_pairs'], config)
+            if not long_results:
+                logger.warning("  Minimap2 failed, falling back to Biopython for long sequences")
+                try:
+                    long_results = run_parallel_biopython_alignment(partitions['long_pairs'], config)
+                except Exception as e:
+                    logger.warning(f"Parallel alignment failed for long sequences: {e}")
+                    long_results = run_simple_biopython_alignment(partitions['long_pairs'], config)
             all_results.extend(long_results)
         
         # Buffer zone -> Both methods or fallback
@@ -1510,9 +1661,20 @@ def run_hybrid_alignment_analysis(first_busco_df, second_busco_df, config):
                     logger.warning(f"Parallel alignment failed for buffer zone: {e}")
                     bio_results = run_simple_biopython_alignment(partitions['buffer_pairs'], config)
                 mm2_results = run_minimap2_alignment(partitions['buffer_pairs'], config)
-                buffer_results = select_best_buffer_results(bio_results, mm2_results, config)
+                if mm2_results:
+                    buffer_results = select_best_buffer_results(bio_results, mm2_results, config)
+                else:
+                    logger.warning("  Minimap2 failed for buffer zone, using Biopython results")
+                    buffer_results = bio_results
             elif buffer_method == 'minimap2':
                 buffer_results = run_minimap2_alignment(partitions['buffer_pairs'], config)
+                if not buffer_results:
+                    logger.warning("  Minimap2 failed for buffer zone, falling back to Biopython")
+                    try:
+                        buffer_results = run_parallel_biopython_alignment(partitions['buffer_pairs'], config)
+                    except Exception as e:
+                        logger.warning(f"Parallel alignment failed for buffer zone: {e}")
+                        buffer_results = run_simple_biopython_alignment(partitions['buffer_pairs'], config)
             else:  # Default to Biopython
                 try:
                     buffer_results = run_parallel_biopython_alignment(partitions['buffer_pairs'], config)
@@ -1532,11 +1694,20 @@ def run_hybrid_alignment_analysis(first_busco_df, second_busco_df, config):
                 mixed_results = run_simple_biopython_alignment(partitions['mixed_pairs'], config)
             all_results.extend(mixed_results)
     
-    elif strategy == 'minimap2':
+    elif strategy == 'minimap2' and minimap2_available:
+        # MINIMAP2 ONLY MODE
         logger.info(f"  Running Minimap2 alignment on all {len(sequence_pairs)} sequences...")
         all_results = run_minimap2_alignment(sequence_pairs, config)
+        if not all_results:
+            logger.warning("  Minimap2 failed completely, falling back to Biopython")
+            try:
+                all_results = run_parallel_biopython_alignment(sequence_pairs, config)
+            except Exception as e:
+                logger.warning(f"Parallel alignment failed: {e}")
+                logger.info("  Falling back to simple sequential alignment...")
+                all_results = run_simple_biopython_alignment(sequence_pairs, config)
     
-    else:  # Biopython only
+    else:  # BIOPYTHON ONLY MODE
         logger.info(f"  Running Biopython alignment on all {len(sequence_pairs)} sequences...")
         try:
             all_results = run_parallel_biopython_alignment(sequence_pairs, config)
@@ -1582,6 +1753,24 @@ def run_hybrid_alignment_analysis(first_busco_df, second_busco_df, config):
         logger.info(f"    Average confidence: {avg_confidence:.3f}")
     
     return pd.DataFrame(ortholog_pairs), pd.DataFrame()  # Return empty paralog_df for compatibility
+
+
+def check_minimap2_available():
+    """Check if minimap2 is available in the system PATH"""
+    try:
+        result = subprocess.run(['minimap2', '--version'], 
+                              capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            logger.info(f"  Minimap2 detected: {result.stdout.strip()}")
+            return True
+        else:
+            logger.warning("  Minimap2 found but returned non-zero exit code")
+            return False
+    except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError):
+        logger.warning("  Minimap2 not found in PATH")
+        return False
+    
+
 
 def select_best_buffer_results(bio_results, mm2_results, config):
     """Select best results when both Biopython and Minimap2 are run on buffer zone"""
