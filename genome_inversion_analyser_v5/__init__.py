@@ -34,11 +34,11 @@ from .logger import setup_logger, get_logger
 
 # Import main analysis modules
 from .analysis import (
-    BUSCOProcessor,
-    OrthologMapper,
     SyntenyAnalyzer,
     InversionDetector,
-    RearrangementDetector
+    RearrangementAnalyzer,
+    QualityAssessor,
+    StatisticalValidator
 )
 
 # Import quality assessment
@@ -102,7 +102,7 @@ __all__ = [
     # Configuration
     'AnalysisConfig',
     'ENHANCED_HYBRID_CONFIG',
-    'FAST_HYBRID_CONFIG',  
+    'FAST_HYBRID_CONFIG',
     'COMPLETE_ENHANCED_CONFIG',
     
     # Logging
@@ -110,11 +110,11 @@ __all__ = [
     'get_logger',
     
     # Analysis modules
-    'BUSCOProcessor',
-    'OrthologMapper', 
     'SyntenyAnalyzer',
     'InversionDetector',
-    'RearrangementDetector',
+    'RearrangementAnalyzer',
+    'QualityAssessor',
+    'StatisticalValidator',
     
     # Quality assessment
     'AssemblyQualityAnalyzer',
@@ -122,7 +122,7 @@ __all__ = [
     # Visualization
     'SyntenyDotplot',
     'SummaryPlotter',
-    'QualityPlotter', 
+    'QualityPlotter',
     'AnalysisDashboard',
     
     # Reporting
