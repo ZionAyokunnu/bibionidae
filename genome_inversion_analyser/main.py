@@ -1,16 +1,4 @@
-# from genome_inversion_analyser.config import FAST_HYBRID_CONFIG
-# from genome_inversion_analyser.workflow import run_complete_analysis
-
-# if __name__ == "__main__":
-#     config = FAST_HYBRID_CONFIG
-#     run_complete_analysis(config)
-
-
-
-# =============================================================================
-# Main Entry Point (main.py)
-# =============================================================================
-
+#!/usr/bin/env python3
 """
 Main entry point for the genome inversion analysis pipeline.
 Handles CLI argument parsing and workflow orchestration.
@@ -18,14 +6,15 @@ Handles CLI argument parsing and workflow orchestration.
 
 import sys
 import argparse
+import logging
 from pathlib import Path
 
-from genome_inversion_analyser.config import (
+from .config import (
     ENHANCED_HYBRID_CONFIG, 
     FAST_HYBRID_CONFIG, 
     COMPLETE_ENHANCED_CONFIG
 )
-from genome_inversion_analyser.logger import setup_logger, get_logger
+from .logger import setup_logger, get_logger
 
 def parse_arguments():
     """Parse command line arguments."""
@@ -34,9 +23,9 @@ def parse_arguments():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python -m genome_inversion_analyser --mode fast
-  python -m genome_inversion_analyser --mode hybrid --threads 8
-  python -m genome_inversion_analyser --mode complete --output results/
+  python -m genome_inversion_analyser_v5 --mode fast
+  python -m genome_inversion_analyser_v5 --mode hybrid --threads 8
+  python -m genome_inversion_analyser_v5 --mode complete --output results/
         """
     )
     
@@ -121,6 +110,37 @@ def override_config_from_args(config, args):
     if args.threads:
         config.update({'minimap2_threads': args.threads})
 
+def run_enhanced_analysis(config):
+    """
+    Main analysis workflow - placeholder for Phase 2 implementation.
+    
+    Args:
+        config: AnalysisConfig object with analysis parameters
+        
+    Returns:
+        Dictionary with analysis results
+    """
+    logger = get_logger()
+    
+    logger.info("Starting enhanced genome analysis...")
+    logger.info(f"Input genomes: {config.get('first_fasta_path')} vs {config.get('second_fasta_path')}")
+    logger.info(f"BUSCO tables: {config.get('first_busco_path')} vs {config.get('second_busco_path')}")
+    logger.info(f"Alignment strategy: {config.get('alignment_strategy')}")
+    
+    # Placeholder results structure
+    results = {
+        'status': 'success',
+        'config': config.to_dict(),
+        'synteny_blocks': [],
+        'inversions': [],
+        'rearrangements': [],
+        'quality_metrics': {},
+        'statistics': {}
+    }
+    
+    logger.info("Analysis workflow completed (Phase 1 placeholder)")
+    return results
+
 def main():
     """Main entry point."""
     args = parse_arguments()
@@ -140,10 +160,9 @@ def main():
     logger.info(f"Output directory: {config.get('base_output_dir')}")
     
     try:
-        # Import and run the main workflow
-        # (This will be implemented in Phase 2)
-        logger.info("Phase 1 infrastructure setup complete!")
-        logger.info("Next: Implement workflow orchestration in Phase 2")
+        # Run the main workflow
+        results = run_enhanced_analysis(config)
+        logger.info("Analysis completed successfully!")
         
     except Exception as e:
         logger.error(f"Analysis failed: {str(e)}")
@@ -154,4 +173,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
