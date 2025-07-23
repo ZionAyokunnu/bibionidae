@@ -7,6 +7,7 @@
 !*.R
 !*.Rmd
 
+
 # Allow gitignore and readme
 !.gitignore
 !README.md
@@ -17,3 +18,4 @@
 !**/*.r
 !**/*.R
 !**/*.Rmd
+!*.genome_inversion_analyser_v5
