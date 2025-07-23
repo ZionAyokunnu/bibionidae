@@ -187,5 +187,8 @@ class QualityAssessor:
             elif metrics['n50'] >= self.medium_quality_n50_threshold:
                 score_components.append(0.7)
             else:
-                score_components.append(max(0.0, metrics['n50'] / self.medium_quality_n50_# Phase 5: Analysis Modules (Synteny, Inversions, and Rearrangements)
-# This phase handles the core genomic analysis for synteny, inversions, and rearrangements
+                score_components.append(max(0.0, metrics['n50'] / self.medium_quality_n50_threshold))
+        # Calculate overall quality score as average of components
+        if score_components:
+            return sum(score_components) / len(score_components)
+        return 0.0
