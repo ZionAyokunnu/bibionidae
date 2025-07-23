@@ -79,7 +79,7 @@ ENHANCED_HYBRID_CONFIG = {
     
     # Minimap2 specific settings
     'minimap2_path': '/Users/za7/Documents/minimap2/minimap2',
-    'minimap2_preset': '--sr',            # Short read preset for BUSCO-sized sequences
+    'minimap2_preset': 'sr',            # Short read preset for BUSCO-sized sequences
     'minimap2_kmer_size': 17,             # Smaller k-mer for better sensitivity
     'minimap2_threads': 3,                # CPU cores to use
     'minimap2_min_score': 100,            # Minimum alignment score
@@ -973,7 +973,7 @@ def create_minimap2_fasta(sequence_pairs, temp_dir):
     return query_file, target_file, query_map, target_map
 
 def run_minimap2_alignment(sequence_pairs, config):
-    """Run minimap2 alignment on sequence pairs"""
+    """Run minimap2 alignment on sequence pairs - FIXED VERSION"""
     if not sequence_pairs:
         return []
     
@@ -987,25 +987,39 @@ def run_minimap2_alignment(sequence_pairs, config):
             query_file, target_file, query_map, target_map = create_minimap2_fasta(sequence_pairs, temp_path)
             output_file = temp_path / "alignments.paf"
             
-            # Build minimap2 command
-            cmd = [
-                'minimap2',
-                config.get('minimap2_preset', '--sr'),
-                '-k', str(config.get('minimap2_kmer_size', 13)),
-                '-t', str(config.get('minimap2_threads', 4)),
-                '--score-N', str(config.get('minimap2_min_score', 100)),
-                config.get('minimap2_extra_flags', '-c --cs'),
-                str(target_file),
-                str(query_file)
-            ]
+            # Build minimap2 command - FIXED
+            cmd = ['minimap2']
             
-            # Remove empty flags
-            cmd = [c for c in cmd if c.strip()]
+            # Add preset (fix: use -x instead of --preset)
+            preset = config.get('minimap2_preset', '--sr')
+            if preset.startswith('--'):
+                preset = preset[2:]  # Remove -- prefix
+            cmd.extend(['-x', preset])
+            
+            # Add other parameters
+            cmd.extend(['-k', str(config.get('minimap2_kmer_size', 13))])
+            cmd.extend(['-t', str(config.get('minimap2_threads', 4))])
+            
+            # Fix: Use -s for minimum score, not --score-N
+            min_score = config.get('minimap2_min_score', 100)
+            cmd.extend(['-s', str(min_score)])
+            
+            # Add extra flags (but parse them properly)
+            extra_flags = config.get('minimap2_extra_flags', '-c --cs')
+            if extra_flags:
+                # Split and add each flag separately
+                for flag in extra_flags.split():
+                    if flag.strip():
+                        cmd.append(flag.strip())
+            
+            # Add input files
+            cmd.append(str(target_file))
+            cmd.append(str(query_file))
+            
+            # Log the actual command for debugging
+            logger.info(f"    Running minimap2 command: {' '.join(cmd)}")
             
             # Run minimap2
-            if config.get('detailed_alignment_logging', False):
-                logger.info(f"    Running minimap2: {' '.join(cmd[:5])}...")
-            
             with open(output_file, 'w') as out_f:
                 process = subprocess.run(
                     cmd, 
