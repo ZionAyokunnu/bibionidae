@@ -89,10 +89,10 @@ def analyze_genomes(first_fasta, second_fasta, first_busco, second_busco,
     logger.section_header("Genome Inversion Analysis Pipeline v2.0")
     
     # Import main analysis function (to avoid circular imports)
-    # from .main_analysis import run_enhanced_analysis
+    from .main import run_enhanced_analysis
     
     # Run analysis
-    # results = run_enhanced_analysis(config)
+    results = run_enhanced_analysis(config)
     
     logger.info("Analysis completed successfully!")
     return results

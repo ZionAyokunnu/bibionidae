@@ -22,8 +22,10 @@ class AnalysisConfig:
     def _validate_paths(self):
         """Validate that required input files exist."""
         required_files = [
-            'first_fasta_path', 'second_fasta_path',
-            'first_busco_path', 'second_busco_path'
+            'first_fasta_path',
+            'second_fasta_path',
+            'first_busco_path',
+            'second_busco_path'
         ]
         
         for file_key in required_files:
