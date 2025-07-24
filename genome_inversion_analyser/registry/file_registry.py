@@ -69,14 +69,67 @@ class FileRegistry:
         with open(self.registry_file, 'w') as f:
             json.dump(self.registry, f, indent=2, default=str)
     
-    def _generate_file_hash(self, data: Any) -> str:
-        """Generate hash for data object"""
-        if isinstance(data, pd.DataFrame):
-            return hashlib.md5(pd.util.hash_pandas_object(data).values.tobytes()).hexdigest()[:8]
-        elif isinstance(data, (dict, list)):
-            return hashlib.md5(json.dumps(data, sort_keys=True, default=str).encode()).hexdigest()[:8]
+    def _serialize_for_hashing(self, obj):
+        """Recursively serialize objects to make them hashable"""
+        if isinstance(obj, list):
+            return tuple(self._serialize_for_hashing(item) for item in obj)
+        elif isinstance(obj, dict):
+            return tuple(sorted((k, self._serialize_for_hashing(v)) for k, v in obj.items()))
+        elif isinstance(obj, np.ndarray):
+            return tuple(obj.flatten().tolist())
+        elif hasattr(obj, '__dict__'):
+            return str(obj)  # Convert complex objects to string
         else:
-            return hashlib.md5(str(data).encode()).hexdigest()[:8]
+            return obj
+    
+    def _generate_file_hash(self, data: Any) -> str:
+        """Generate hash for data object with robust handling of unhashable types"""
+        try:
+            if isinstance(data, pd.DataFrame):
+                # Method 1: Try pandas hashing first (fastest if it works)
+                try:
+                    return hashlib.md5(pd.util.hash_pandas_object(data).values.tobytes()).hexdigest()[:8]
+                except TypeError:
+                    # Method 2: Handle unhashable types by converting DataFrame to serializable format
+                    logger.debug("DataFrame contains unhashable types, using alternative hashing method")
+                    
+                    # Convert DataFrame to dictionary with serialized values
+                    serialized_data = {}
+                    for col in data.columns:
+                        try:
+                            # Try to convert column to JSON-serializable format
+                            if data[col].dtype == 'object':
+                                # Handle columns that might contain lists, dicts, etc.
+                                serialized_col = []
+                                for value in data[col]:
+                                    serialized_col.append(self._serialize_for_hashing(value))
+                                serialized_data[col] = serialized_col
+                            else:
+                                # For numeric/string columns, convert to list
+                                serialized_data[col] = data[col].tolist()
+                        except Exception as e:
+                            logger.warning(f"Could not serialize column {col}: {e}")
+                            # Fallback: convert entire column to string
+                            serialized_data[col] = [str(x) for x in data[col]]
+                    
+                    # Hash the serialized representation
+                    json_str = json.dumps(serialized_data, sort_keys=True, default=str)
+                    return hashlib.md5(json_str.encode()).hexdigest()[:8]
+                    
+            elif isinstance(data, (dict, list)):
+                # Serialize nested structures
+                serialized = self._serialize_for_hashing(data)
+                json_str = json.dumps(serialized, sort_keys=True, default=str)
+                return hashlib.md5(json_str.encode()).hexdigest()[:8]
+            else:
+                # For other types, convert to string
+                return hashlib.md5(str(data).encode()).hexdigest()[:8]
+                
+        except Exception as e:
+            logger.warning(f"Error generating hash, using fallback method: {e}")
+            # Ultimate fallback: use timestamp + data type + length
+            fallback_data = f"{datetime.now().isoformat()}_{type(data).__name__}_{len(str(data))}"
+            return hashlib.md5(fallback_data.encode()).hexdigest()[:8]
     
     def register_file(self, 
                       file_id: str,
@@ -105,7 +158,11 @@ class FileRegistry:
             metadata = {}
             
         # Generate file hash for integrity checking
-        file_hash = self._generate_file_hash(data)
+        try:
+            file_hash = self._generate_file_hash(data)
+        except Exception as e:
+            logger.error(f"Failed to generate hash for {file_id}: {e}")
+            file_hash = f"error_{datetime.now().strftime('%H%M%S')}"
         
         # Determine file path based on type
         if file_type in ['bed', 'gff', 'json', 'fasta']:
@@ -114,7 +171,11 @@ class FileRegistry:
             file_path = self.directories['data'] / f"{file_id}.{file_type}"
         
         # Save the actual file
-        self._save_file(data, file_path, file_type)
+        try:
+            self._save_file(data, file_path, file_type)
+        except Exception as e:
+            logger.error(f"Failed to save file {file_id}: {e}")
+            raise
         
         # Register in registry
         self.registry['files'][file_id] = {
@@ -138,35 +199,63 @@ class FileRegistry:
         return file_path
     
     def _save_file(self, data: Any, file_path: Path, file_type: str):
-        """Save data to appropriate file format"""
-        if file_type == 'csv':
-            if isinstance(data, pd.DataFrame):
-                data.to_csv(file_path, index=False)
+        """Save data to appropriate file format with better error handling"""
+        try:
+            if file_type == 'csv':
+                if isinstance(data, pd.DataFrame):
+                    # Handle DataFrames with complex column types
+                    df_copy = data.copy()
+                    
+                    # Convert list/dict columns to string representation for CSV
+                    for col in df_copy.columns:
+                        if df_copy[col].dtype == 'object':
+                            # Check if column contains lists or dicts
+                            sample_value = df_copy[col].iloc[0] if len(df_copy) > 0 else None
+                            if isinstance(sample_value, (list, dict)):
+                                logger.debug(f"Converting complex column {col} to string for CSV export")
+                                df_copy[col] = df_copy[col].astype(str)
+                    
+                    df_copy.to_csv(file_path, index=False)
+                else:
+                    raise ValueError(f"CSV format requires DataFrame, got {type(data)}")
+            
+            elif file_type == 'json':
+                # Handle complex nested structures in JSON
+                def json_serializer(obj):
+                    if isinstance(obj, (np.integer, np.floating)):
+                        return obj.item()
+                    elif isinstance(obj, np.ndarray):
+                        return obj.tolist()
+                    elif hasattr(obj, 'isoformat'):  # datetime objects
+                        return obj.isoformat()
+                    else:
+                        return str(obj)
+                
+                with open(file_path, 'w') as f:
+                    json.dump(data, f, indent=2, default=json_serializer)
+            
+            elif file_type == 'bed':
+                self._save_bed_format(data, file_path)
+            
+            elif file_type == 'gff':
+                self._save_gff_format(data, file_path)
+            
+            elif file_type == 'fasta':
+                self._save_fasta_format(data, file_path)
+            
+            elif file_type == 'pkl':
+                with open(file_path, 'wb') as f:
+                    pickle.dump(data, f)
+            
             else:
-                raise ValueError(f"CSV format requires DataFrame, got {type(data)}")
-        
-        elif file_type == 'json':
-            with open(file_path, 'w') as f:
-                json.dump(data, f, indent=2, default=str)
-        
-        elif file_type == 'bed':
-            self._save_bed_format(data, file_path)
-        
-        elif file_type == 'gff':
-            self._save_gff_format(data, file_path)
-        
-        elif file_type == 'fasta':
-            self._save_fasta_format(data, file_path)
-        
-        elif file_type == 'pkl':
-            with open(file_path, 'wb') as f:
-                pickle.dump(data, f)
-        
-        else:
-            raise ValueError(f"Unsupported file type: {file_type}")
+                raise ValueError(f"Unsupported file type: {file_type}")
+                
+        except Exception as e:
+            logger.error(f"Error saving file {file_path}: {e}")
+            raise
     
     def _save_bed_format(self, data: pd.DataFrame, file_path: Path):
-        """Save DataFrame as BED format"""
+        """Save DataFrame as BED format with error handling"""
         # Ensure required BED columns
         required_cols = ['chrom', 'start', 'end']
         if not all(col in data.columns for col in required_cols):
@@ -180,6 +269,13 @@ class FileRegistry:
             bed_data['start'] = bed_data['start'].astype(int)
         if 'end' in bed_data.columns:
             bed_data['end'] = bed_data['end'].astype(int)
+        
+        # Convert any complex columns to strings
+        for col in bed_data.columns:
+            if bed_data[col].dtype == 'object':
+                sample_value = bed_data[col].iloc[0] if len(bed_data) > 0 else None
+                if isinstance(sample_value, (list, dict)):
+                    bed_data[col] = bed_data[col].astype(str)
         
         bed_data.to_csv(file_path, sep='\t', header=False, index=False)
     
