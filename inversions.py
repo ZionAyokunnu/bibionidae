@@ -10,7 +10,7 @@ import argparse
 # Add the current directory to Python path 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from genome_inversion_analyser import run_complete_enhanced_analysis_with_hybrid
+from genome_inversion_analyser.main import run_complete_enhanced_analysis_with_registry
 from genome_inversion_analyser.config import (
     COMPLETE_ENHANCED_CONFIG, 
     ENHANCED_HYBRID_CONFIG, 
@@ -58,7 +58,7 @@ def main():
     
     try:
         print("🧬 Starting Genome Inversion Analysis...")
-        results = run_complete_enhanced_analysis_with_hybrid(config)
+        results = run_complete_enhanced_analysis_with_registry(config)
         print("✅ Analysis Complete!")
         return results
     except Exception as e:
