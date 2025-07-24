@@ -430,10 +430,9 @@ class SyRIIntegrator:
                     ax.add_patch(rect1)
                     ax.add_patch(rect2)
 
-
     def integrate_with_syri(output_dir: Union[str, Path],
-                        pairwise_results: Dict[str, Any],
-                        species_pairs: List[Tuple[str, str]] = None) -> Dict[str, Any]:
+                            pairwise_results: Dict[str, Any],
+                            species_pairs: List[Tuple[str, str]] = None) -> Dict[str, Any]:
         """
         Complete SyRI integration for multi-species analysis
         
@@ -623,10 +622,10 @@ class SyRIIntegrator:
             min_pos = min(orthologs['first_start'].min(), orthologs['second_start'].min())
             max_pos = max(orthologs['first_end'].max(), orthologs['second_end'].max())
             ax.plot([min_pos, max_pos], [min_pos, max_pos], 'k--', alpha=0.3, linewidth=1)
-        
-    # Create summary report
-    summary_report = syri_integrator.create_summary_report(species_pairs, pairwise_results)
-    syri_results['summary_report'] = str(summary_report)
-    
-    logger.info(f"SyRI integration completed for {len(species_pairs)} species pairs")
-    return syri_results
+
+        # Create summary report
+        summary_report = syri_integrator.create_summary_report(species_pairs, pairwise_results)
+        syri_results['summary_report'] = str(summary_report)
+
+        logger.info(f"SyRI integration completed for {len(species_pairs)} species pairs")
+        return syri_results
