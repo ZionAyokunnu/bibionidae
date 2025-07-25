@@ -36,11 +36,11 @@ def main():
 
     # Update config with your file paths
     config.update({
-        'first_fasta_path': 'GCA_910594885.2_idBibMarc1.2_genomic.fna',
-        'second_fasta_path': 'GCA_958336335.1_idDilFebr1.1_genomic.fna', 
-        'first_busco_path': 'Bibio_marci/full_table.tsv',
-        'second_busco_path': 'Dilophus_febrilis/full_table.tsv',
-        'base_output_dir': f'v4/{args.mode}_results'  # Different output dirs per mode
+        'first_fasta_path': 'GCA_963924295.1_idDioRufi1.1_genomic.fna',
+        'second_fasta_path': 'Dioctria_linearis.fna', 
+        'first_busco_path': 'Dioctria_rufipes.tsv',
+        'second_busco_path': 'Dioctria_linearis.tsv',
+        'base_output_dir': f'v6/{args.mode}_results'  # Different output dirs per mode
     })
     
     # Verify files exist

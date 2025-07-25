@@ -10,18 +10,18 @@ Contains all configuration dictionaries and parameter sets
 # Enhanced configuration with hybrid alignment settings
 ENHANCED_HYBRID_CONFIG = {
     # ==== INPUT FILES ====
-    'first_fasta_path': 'GCA_910594885.2_idBibMarc1.2_genomic.fna',
-    'second_fasta_path': 'GCA_958336335.1_idDilFebr1.1_genomic.fna',
-    'first_busco_path': 'Bibio_marci/full_table.tsv',
-    'second_busco_path': 'Dilophus_febrilis/full_table.tsv',
+    'first_fasta_path': 'template.fna',
+    'second_fasta_path': 'template.fna',
+    'first_busco_path': 'template/full_table.tsv',
+    'second_busco_path': 'template/full_table.tsv',
     
     # ==== OUTPUT FILES ====
-    'base_output_dir': 'v4/enhanced_results',
-    'synteny_analysis_csv': 'v4/enhanced_synteny_analysis.csv',
-    'inversion_summary_csv': 'v4/enhanced_inversion_summary.csv',
-    'chromosome_rearrangements_csv': 'v4/enhanced_chromosome_rearrangements.csv',
-    'paralog_analysis_csv': 'v4/paralog_analysis.csv',
-    'quality_report_csv': 'v4/assembly_quality_report.csv',
+    'base_output_dir': 'enhanced_results',
+    'synteny_analysis_csv': 'enhanced_synteny_analysis.csv',
+    'inversion_summary_csv': 'enhanced_inversion_summary.csv',
+    'chromosome_rearrangements_csv': 'enhanced_chromosome_rearrangements.csv',
+    'paralog_analysis_csv': 'paralog_analysis.csv',
+    'quality_report_csv': 'assembly_quality_report.csv',
     
     # ==== HYBRID ALIGNMENT CONFIGURATION ====
     'alignment_strategy': 'minimap2',  # 'biopython', 'minimap2', or 'hybrid'

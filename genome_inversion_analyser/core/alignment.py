@@ -794,7 +794,9 @@ def select_best_buffer_results(bio_results, mm2_results, config):
         
         if bio_result and mm2_result:
             # Both methods succeeded - choose best based on confidence
-            if bio_result['confidence'] >= mm2_result['confidence']:
+            bio_confidence = bio_result('confidence', 0.0)
+            mm2_confidence = mm2_result.get('confidence', 0.0)
+            if bio_confidence > mm2_confidence:
                 bio_result['validation_method'] = 'dual_validated'
                 bio_result['alternative_confidence'] = mm2_result['confidence']
                 best_results.append(bio_result)
