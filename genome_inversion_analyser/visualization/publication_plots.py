@@ -905,97 +905,97 @@ class PublicationPlotGenerator:
         except Exception as e:
             logger.error(f"Tree heatmap creation failed: {e}")
 
-    def create_publication_plots(ortholog_df: pd.DataFrame, inversion_df: pd.DataFrame, 
-                            synteny_df: pd.DataFrame, registry, config: Dict, 
-                            output_dir: Path, species_stats: Dict = None):
-        """
-        Main integration function for publication plots
-        Can be called from existing visualization system
-        """
+def create_publication_plots(ortholog_df: pd.DataFrame, inversion_df: pd.DataFrame, 
+                        synteny_df: pd.DataFrame, registry, config: Dict, 
+                        output_dir: Path, species_stats: Dict = None):
+    """
+    Main integration function for publication plots
+    Can be called from existing visualization system
+    """
+    
+    logger.info("🎨 Creating publication-quality plots...")
+    
+    try:
+        # Create publication config if not exists
+        pub_config = config.get('publication_config', {
+            'publication_suite': {'enabled': True},
+            'synteny_visualization': {'enabled': True, 'options': {}},
+            'tree_annotation': {'enabled': True}
+        })
         
-        logger.info("🎨 Creating publication-quality plots...")
+        # Update config
+        updated_config = config.copy()
+        updated_config['publication_config'] = pub_config
         
-        try:
-            # Create publication config if not exists
-            pub_config = config.get('publication_config', {
-                'publication_suite': {'enabled': True},
-                'synteny_visualization': {'enabled': True, 'options': {}},
-                'tree_annotation': {'enabled': True}
-            })
-            
-            # Update config
-            updated_config = config.copy()
-            updated_config['publication_config'] = pub_config
-            
-            # Create plot generator
-            plot_generator = PublicationPlotGenerator(registry, updated_config)
-            
-            # Prepare all_results format (if coming from single analysis)
-            if not isinstance(ortholog_df, dict):
-                # Single pair analysis - convert to multi-species format
-                all_results = {
-                    'single_pair': {
-                        'species_pair': ('Species_A', 'Species_B'),
+        # Create plot generator
+        plot_generator = PublicationPlotGenerator(registry, updated_config)
+        
+        # Prepare all_results format (if coming from single analysis)
+        if not isinstance(ortholog_df, dict):
+            # Single pair analysis - convert to multi-species format
+            all_results = {
+                'single_pair': {
+                    'species_pair': ('Species_A', 'Species_B'),
+                    'ortholog_df': ortholog_df,
+                    'inversion_df': inversion_df,
+                    'synteny_df': synteny_df,
+                    'full_results': {
                         'ortholog_df': ortholog_df,
                         'inversion_df': inversion_df,
-                        'synteny_df': synteny_df,
-                        'full_results': {
-                            'ortholog_df': ortholog_df,
-                            'inversion_df': inversion_df,
-                            'synteny_df': synteny_df
+                        'synteny_df': synteny_df
+                    }
+                }
+            }
+            
+            # Create dummy species stats if not provided
+            if species_stats is None:
+                species_stats = {
+                    'Species_A': {
+                        'quality': {
+                            'metrics': {'total_length': 100000000},
+                            'quality_score': 0.8
+                        }
+                    },
+                    'Species_B': {
+                        'quality': {
+                            'metrics': {'total_length': 100000000},
+                            'quality_score': 0.8
                         }
                     }
                 }
-                
-                # Create dummy species stats if not provided
-                if species_stats is None:
-                    species_stats = {
-                        'Species_A': {
-                            'quality': {
-                                'metrics': {'total_length': 100000000},
-                                'quality_score': 0.8
-                            }
-                        },
-                        'Species_B': {
-                            'quality': {
-                                'metrics': {'total_length': 100000000},
-                                'quality_score': 0.8
-                            }
-                        }
-                    }
-            else:
-                # Multi-species format
-                all_results = ortholog_df  # ortholog_df is actually all_results in this case
-            
-            # Create publication suite
-            results = plot_generator.create_publication_suite(all_results, species_stats, output_dir)
-            
-            logger.info("✅ Publication plots completed")
-            return results
-            
-        except Exception as e:
-            logger.error(f"Publication plots failed: {e}")
-            import traceback
-            traceback.print_exc()
-            return {}
+        else:
+            # Multi-species format
+            all_results = ortholog_df  # ortholog_df is actually all_results in this case
+        
+        # Create publication suite
+        results = plot_generator.create_publication_suite(all_results, species_stats, output_dir)
+        
+        logger.info("✅ Publication plots completed")
+        return results
+        
+    except Exception as e:
+        logger.error(f"Publication plots failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return {}
 
-    def create_curved_synteny_plot(ortholog_df: pd.DataFrame, inversion_df: pd.DataFrame,
-                                species1: str, species2: str, output_dir: Path,
-                                registry=None, config: Dict = None) -> Optional[Path]:
-        """Create a single curved synteny plot"""
-        
-        if config is None:
-            config = {'publication_config': {'synteny_visualization': {'enabled': True}}}
-        
-        plot_generator = PublicationPlotGenerator(registry, config)
-        
-        result = plot_generator._create_single_fallback_plot(
-            ortholog_df, inversion_df, species1, species2, output_dir
-        )
-        
-        return result
+def create_curved_synteny_plot(ortholog_df: pd.DataFrame, inversion_df: pd.DataFrame,
+                            species1: str, species2: str, output_dir: Path,
+                            registry=None, config: Dict = None) -> Optional[Path]:
+    """Create a single curved synteny plot"""
+    
+    if config is None:
+        config = {'publication_config': {'synteny_visualization': {'enabled': True}}}
+    
+    plot_generator = PublicationPlotGenerator(registry, config)
+    
+    result = plot_generator._create_single_fallback_plot(
+        ortholog_df, inversion_df, species1, species2, output_dir
+    )
+    
+    return result
 
-    def create_annotated_phylogeny(all_results: Dict, species_stats: Dict, 
+def create_annotated_phylogeny(all_results: Dict, species_stats: Dict, 
                                 tree_path: str, output_dir: Path,
                                 registry=None) -> Dict:
         """Create annotated phylogenetic tree"""
