@@ -286,9 +286,14 @@ class PublicationPlotGenerator:
         try:
             fig, ax = plt.subplots(figsize=(14, 10))
             
+                    # column name mapping
+            ortholog_df_mapped = ortholog_df.rename(columns={
+                'first_chr': 'first_chromosome',
+                'second_chr': 'second_chromosome'
+            })
             # Get chromosome information
-            chr1_list = sorted(ortholog_df['first_chromosome'].unique())
-            chr2_list = sorted(ortholog_df['second_chromosome'].unique())
+            chr1_list = sorted(ortholog_df_mapped['first_chromosome'].unique())
+            chr2_list = sorted(ortholog_df_mapped['second_chromosome'].unique())
             
             # Create chromosome positions
             chr1_positions = {chr_name: i for i, chr_name in enumerate(chr1_list)}

@@ -1,33 +1,45 @@
 #!/usr/bin/env python3
-"""
-Test the complete clean system
-"""
 
 import sys
+import pandas as pd
 from pathlib import Path
-
 sys.path.insert(0, str(Path(__file__).parent))
 
-print("🔬 TESTING CLEAN SYSTEM")
-print("=" * 30)
+from genome_inversion_analyser.visualization.publication_plots import PublicationPlotGenerator
+from genome_inversion_analyser.registry import FileRegistry
 
-# Test 1: All imports
-print("Test 1: Module imports...")
+print("📊 Testing synteny plot fix...")
+
+# Load real data
+ortholog_df = pd.read_csv('pairwise_results/Dioctria_linearis_vs_Dioctria_rufipes/data/ortholog_pairs.csv')
+inversion_df = pd.read_csv('pairwise_results/Dioctria_linearis_vs_Dioctria_rufipes/data/inversion_events.csv')
+
+print(f"Loaded: {len(ortholog_df)} orthologs, {len(inversion_df)} inversions")
+
+# Test config (disable external tool)
+test_config = {
+    'publication_config': {
+        'synteny_visualization': {'enabled': True},
+        'external_tools': {'synteny_plotter': None}
+    }
+}
+
+# Test
+output_dir = Path("test_synteny_fix")
+registry = FileRegistry(output_dir, project_name="synteny_test")
+plot_generator = PublicationPlotGenerator(registry, test_config)
+
 try:
-    from genome_inversion_analyser.config import PUBLICATION_CONFIG
-    from genome_inversion_analyser.visualization import SyRIIntegrator, PublicationPlotGenerator
-    from genome_inversion_analyser.phylogenetic import PhylogeneticIntegrator
-    print("✅ All imports successful")
+    plot_file = plot_generator._create_single_fallback_plot(
+        ortholog_df, inversion_df, 'Dioctria_linearis', 'Dioctria_rufipes', output_dir
+    )
+    
+    if plot_file and plot_file.exists():
+        print(f"✅ Synteny plot created: {plot_file}")
+    else:
+        print("❌ Synteny plot creation failed")
+        
 except Exception as e:
-    print(f"❌ Import failed: {e}")
-
-# Test 2: Configuration
-print("\nTest 2: Configuration...")
-try:
-    print(f"✅ PUBLICATION_CONFIG keys: {list(PUBLICATION_CONFIG.keys())}")
-    print(f"✅ Synteny enabled: {PUBLICATION_CONFIG['synteny_visualization']['enabled']}")
-    print(f"✅ Tree path: {PUBLICATION_CONFIG['tree_annotation']['source_tree_path']}")
-except Exception as e:
-    print(f"❌ Config test failed: {e}")
-
-print(f"\n🎯 System ready for full multi-species analysis!")
+    print(f"❌ Synteny test failed: {e}")
+    import traceback
+    traceback.print_exc()

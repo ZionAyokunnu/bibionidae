@@ -267,7 +267,7 @@ PUBLICATION_CONFIG = {
     # Phylogenetic tree annotation
     'tree_annotation': {
         'enabled': True,
-        'source_tree_path': 'bibionidae/diptera_clean_20species.newick',
+        'source_tree_path': 'diptera_clean_20species.newick',
         'prune_to_target_species': True,
         'annotation_metrics': {
             'inversion_count': True,
