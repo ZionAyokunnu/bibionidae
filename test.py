@@ -1,94 +1,49 @@
-# #!/usr/bin/env python3
-
-# import sys
-# import pandas as pd
-# from pathlib import Path
-
-# print("🔍 Debugging column issue...")
-
-# # Load the data
-# ortholog_df = pd.read_csv('pairwise_results/Dioctria_linearis_vs_Dioctria_rufipes/data/ortholog_pairs.csv')
-
-# print("Original columns:", list(ortholog_df.columns))
-
-# # Test renaming
-# ortholog_df_mapped = ortholog_df.rename(columns={
-#     'first_chr': 'first_chromosome',
-#     'second_chr': 'second_chromosome'
-# })
-
-# print("After renaming:", list(ortholog_df_mapped.columns))
-
-# # Check if renaming worked
-# if 'first_chromosome' in ortholog_df_mapped.columns:
-#     print("✅ Renaming worked!")
-#     print("Sample data:")
-#     print(ortholog_df_mapped[['first_chromosome', 'second_chromosome', 'first_start', 'second_start']].head(2))
-# else:
-#     print("❌ Renaming failed!")
-    
-# # Test accessing the columns
-# try:
-#     chr1_list = sorted(ortholog_df_mapped['first_chromosome'].unique())
-#     chr2_list = sorted(ortholog_df_mapped['second_chromosome'].unique())
-#     print(f"✅ Chromosomes found: {len(chr1_list)} and {len(chr2_list)}")
-#     print(f"Chr1 sample: {chr1_list[:3]}")
-#     print(f"Chr2 sample: {chr2_list[:3]}")
-# except Exception as e:
-#     print(f"❌ Column access failed: {e}")
-
-
-
-
-    #!/usr/bin/env python3
+#!/usr/bin/env python3
 
 import sys
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
 
-# Simple direct test
-print("📊 Direct synteny plot test...")
+from genome_inversion_analyser.visualization.publication_plots import PublicationPlotGenerator
+from genome_inversion_analyser.registry import FileRegistry
 
-# Load data
+print("📊 Testing fixed publication synteny plot...")
+
+# Load real data
 ortholog_df = pd.read_csv('pairwise_results/Dioctria_linearis_vs_Dioctria_rufipes/data/ortholog_pairs.csv')
-print(f"Loaded {len(ortholog_df)} orthologs")
+inversion_df = pd.read_csv('pairwise_results/Dioctria_linearis_vs_Dioctria_rufipes/data/inversion_events.csv')
 
-# Test direct plotting
-output_dir = Path("test_direct_synteny")
+print(f"Loaded: {len(ortholog_df)} orthologs, {len(inversion_df)} inversions")
+
+# Test config
+test_config = {
+    'publication_config': {
+        'synteny_visualization': {'enabled': True},
+        'external_tools': {'synteny_plotter': None}
+    }
+}
+
+# Test
+output_dir = Path("test_publication_synteny")
 output_dir.mkdir(exist_ok=True)
 
+registry = FileRegistry(output_dir, project_name="synteny_test")
+plot_generator = PublicationPlotGenerator(registry, test_config)
+
 try:
-    fig, ax = plt.subplots(figsize=(12, 8))
+    print("Calling _create_single_fallback_plot...")
+    plot_file = plot_generator._create_single_fallback_plot(
+        ortholog_df, inversion_df, 'Dioctria_linearis', 'Dioctria_rufipes', output_dir
+    )
     
-    # Get chromosomes
-    chr1_list = sorted(ortholog_df['first_chr'].unique())
-    chr2_list = sorted(ortholog_df['second_chr'].unique())
-    
-    print(f"Chromosomes: {len(chr1_list)} vs {len(chr2_list)}")
-    
-    # Simple plot
-    for i, (_, row) in enumerate(ortholog_df.head(100).iterrows()):  # Just first 100
-        y1 = 0.7
-        y2 = 0.3
-        x1 = 0.2 + 0.6 * (i / 100)
-        x2 = 0.2 + 0.6 * (i / 100)
+    if plot_file and plot_file.exists():
+        print(f"✅ Publication synteny plot created: {plot_file}")
+        print(f"File size: {plot_file.stat().st_size} bytes")
+    else:
+        print("❌ Publication synteny plot creation failed - no file returned")
         
-        color = plt.cm.viridis(row['similarity'])
-        ax.plot([x1, x2], [y1, y2], color=color, alpha=0.6, linewidth=1)
-    
-    ax.set_title('Simple Synteny Test')
-    ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1)
-    
-    plot_file = output_dir / 'simple_synteny_test.png'
-    plt.savefig(plot_file, dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    print(f"✅ Simple test successful: {plot_file}")
-    
 except Exception as e:
-    print(f"❌ Simple test failed: {e}")
+    print(f"❌ Publication synteny test failed: {e}")
     import traceback
     traceback.print_exc()
