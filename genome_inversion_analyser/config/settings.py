@@ -219,3 +219,75 @@ COMPLETE_ENHANCED_CONFIG = {
     'enable_statistical_validation': True,
     'enable_assembly_quality_assessment': True,
 }
+
+PUBLICATION_CONFIG = {
+    # Synteny visualization
+    'use_synteny_plotter': True,
+    'synteny_plotter_path': '/path/to/synteny_plotter.py',
+    'create_curved_ribbons': True,
+    'create_chord_diagrams': True,
+    
+    # Phylogenetic integration  
+    'use_existing_diptera_tree': True,
+    'diptera_tree_path': '/path/to/sanger_diptera.nwk',
+    'prune_to_species': True,
+    'annotate_with_inversions': True,
+    
+    # Annotation metrics
+    'inversion_metrics': ['raw_count', 'normalized_rate', 'per_mb'],
+    'edge_annotation_style': 'heatmap',  # 'heatmap', 'width', 'color'
+    
+    # Output control
+    'create_publication_plots': True,
+    'plot_formats': ['png', 'pdf', 'svg'],
+    'high_dpi': 300,
+    
+    #charlotte's synteny plotter settings
+    'external_tools': {
+        'synteny_plotter': 'genome_inversion_analyser/external_tools/synteny_plotter/synteny_plotter.py'
+    },
+    
+    # Synteny visualization settings
+    'synteny_visualization': {
+        'enabled': True,
+        'create_curved_ribbons': True,
+        'create_straight_links': False,
+        'options': {
+            'curved': True,
+            'color_by': 'similarity',
+            'figure_width': 12,
+            'figure_height': 8,
+            'dpi': 300,
+            'output_format': 'png',
+            'line_width': 1.5,
+            'alpha': 0.7
+        }
+    },
+    
+    # Phylogenetic tree annotation
+    'tree_annotation': {
+        'enabled': True,
+        'source_tree_path': 'bibionidae/diptera_clean_20species.newick',
+        'prune_to_target_species': True,
+        'annotation_metrics': {
+            'inversion_count': True,
+            'inversion_rate_per_mb': True,
+            'normalized_inversion_score': True
+        },
+        'visualization': {
+            'edge_annotation_style': 'heatmap',  # 'heatmap', 'width', 'color', 'labels'
+            'node_support_values': True,
+            'output_formats': ['png', 'pdf', 'newick'],
+            'tree_layout': 'rectangular',  # 'rectangular', 'circular'
+            'dpi': 300
+        }
+    },
+    
+    # Publication suite control
+    'publication_suite': {
+        'enabled': True,
+        'create_all_plots': True,
+        'high_quality_output': True,
+        'create_supplementary_data': True
+    }
+}

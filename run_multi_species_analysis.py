@@ -249,6 +249,40 @@ Examples:
         print("\n❌ Configuration validation failed!")
         sys.exit(1)
 
+# After the existing phylogenetic analysis, add this:
+
+# CREATE PUBLICATION PLOTS
+print(f"\n🎨 Creating publication-quality plots...")
+
+try:
+    from genome_inversion_analyser.visualization.publication_plots import create_publication_plots
+    from genome_inversion_analyser.config import PUBLICATION_CONFIG
+    
+    # Update config with publication settings
+    pub_config = pairwise_config.copy()
+    pub_config['publication_config'] = PUBLICATION_CONFIG
+    
+    # Create publication plots
+    pub_results = create_publication_plots(
+        all_results,  # Pass all results as dict
+        None,  # No single ortholog_df
+        None,  # No single inversion_df  
+        registry,
+        pub_config,
+        phylo_output_dir,
+        species_stats
+    )
+    
+    if pub_results:
+        print(f"  ✅ Publication plots created:")
+        for plot_type, plots in pub_results.items():
+            if isinstance(plots, dict):
+                print(f"    • {plot_type}: {len(plots)} files")
+            else:
+                print(f"    • {plot_type}: {plots}")
+    
+except Exception as e:
+    print(f"  ❌ Publication plots failed: {e}")
 
 if __name__ == "__main__":
     main()
