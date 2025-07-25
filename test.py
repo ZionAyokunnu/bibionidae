@@ -3,43 +3,36 @@
 import sys
 import pandas as pd
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent))
 
-from genome_inversion_analyser.visualization.publication_plots import PublicationPlotGenerator
-from genome_inversion_analyser.registry import FileRegistry
+print("🔍 Debugging column issue...")
 
-print("📊 Testing synteny plot fix...")
-
-# Load real data
+# Load the data
 ortholog_df = pd.read_csv('pairwise_results/Dioctria_linearis_vs_Dioctria_rufipes/data/ortholog_pairs.csv')
-inversion_df = pd.read_csv('pairwise_results/Dioctria_linearis_vs_Dioctria_rufipes/data/inversion_events.csv')
 
-print(f"Loaded: {len(ortholog_df)} orthologs, {len(inversion_df)} inversions")
+print("Original columns:", list(ortholog_df.columns))
 
-# Test config (disable external tool)
-test_config = {
-    'publication_config': {
-        'synteny_visualization': {'enabled': True},
-        'external_tools': {'synteny_plotter': None}
-    }
-}
+# Test renaming
+ortholog_df_mapped = ortholog_df.rename(columns={
+    'first_chr': 'first_chromosome',
+    'second_chr': 'second_chromosome'
+})
 
-# Test
-output_dir = Path("test_synteny_fix")
-registry = FileRegistry(output_dir, project_name="synteny_test")
-plot_generator = PublicationPlotGenerator(registry, test_config)
+print("After renaming:", list(ortholog_df_mapped.columns))
 
-try:
-    plot_file = plot_generator._create_single_fallback_plot(
-        ortholog_df, inversion_df, 'Dioctria_linearis', 'Dioctria_rufipes', output_dir
-    )
+# Check if renaming worked
+if 'first_chromosome' in ortholog_df_mapped.columns:
+    print("✅ Renaming worked!")
+    print("Sample data:")
+    print(ortholog_df_mapped[['first_chromosome', 'second_chromosome', 'first_start', 'second_start']].head(2))
+else:
+    print("❌ Renaming failed!")
     
-    if plot_file and plot_file.exists():
-        print(f"✅ Synteny plot created: {plot_file}")
-    else:
-        print("❌ Synteny plot creation failed")
-        
+# Test accessing the columns
+try:
+    chr1_list = sorted(ortholog_df_mapped['first_chromosome'].unique())
+    chr2_list = sorted(ortholog_df_mapped['second_chromosome'].unique())
+    print(f"✅ Chromosomes found: {len(chr1_list)} and {len(chr2_list)}")
+    print(f"Chr1 sample: {chr1_list[:3]}")
+    print(f"Chr2 sample: {chr2_list[:3]}")
 except Exception as e:
-    print(f"❌ Synteny test failed: {e}")
-    import traceback
-    traceback.print_exc()
+    print(f"❌ Column access failed: {e}")
