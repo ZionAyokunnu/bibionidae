@@ -17,15 +17,18 @@ from .plots import (
     create_rearrangement_summary_plot,
     create_method_summary_plot
 )
+
 from .publication_plots import (
     PublicationPlotGenerator,
     create_publication_plots,
     create_curved_synteny_plot,
     create_annotated_phylogeny
 )
+
 from .syri_integration import SyRIIntegrator
 
 __all__ = [
+    # Standard plots
     'create_enhanced_visualizations',
     'add_synteny_block_lines',
     'create_busco_synteny_dotplot',
@@ -40,5 +43,14 @@ __all__ = [
     'create_synteny_summary_plot',
     'create_inversion_summary_plot',
     'create_rearrangement_summary_plot',
-    'create_method_summary_plot'
+    'create_method_summary_plot',
+    
+    # Publication plots
+    'PublicationPlotGenerator',
+    'create_publication_plots',
+    'create_curved_synteny_plot',
+    'create_annotated_phylogeny',
+    
+    # SyRI integration
+    'SyRIIntegrator'
 ]
