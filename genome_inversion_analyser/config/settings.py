@@ -223,7 +223,6 @@ COMPLETE_ENHANCED_CONFIG = {
 PUBLICATION_CONFIG = {
     # Synteny visualization
     'use_synteny_plotter': True,
-    'synteny_plotter_path': '/path/to/synteny_plotter.py',
     'create_curved_ribbons': True,
     'create_chord_diagrams': True,
     
@@ -242,9 +241,9 @@ PUBLICATION_CONFIG = {
     'plot_formats': ['png', 'pdf', 'svg'],
     'high_dpi': 300,
     
-    #charlotte's synteny plotter settings
+    # Charlotte's R-based synteny plotter settings (WORKING VERSION)
     'external_tools': {
-        'synteny_plotter': 'genome_inversion_analyser/external_tools/synteny_plotter/synteny_plotter.py'
+        'synteny_plotter': 'genome_inversion_analyser/external_tools/synteny_plotter'  # Directory path
     },
     
     # Synteny visualization settings
@@ -253,14 +252,10 @@ PUBLICATION_CONFIG = {
         'create_curved_ribbons': True,
         'create_straight_links': False,
         'options': {
-            'curved': True,
-            'color_by': 'similarity',
-            'figure_width': 12,
-            'figure_height': 8,
-            'dpi': 300,
-            'output_format': 'png',
-            'line_width': 1.5,
-            'alpha': 0.7
+            'filter_threshold': 5,  # Minimum BUSCOs per chromosome (R script -f parameter)
+            'gap': 6,              # Gap between chromosomal sets (R script -g parameter)
+            'alpha': 10,           # Transparency percentage (R script -alpha parameter)
+            'output_format': 'png'
         }
     },
     

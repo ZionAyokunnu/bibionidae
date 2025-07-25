@@ -26,6 +26,20 @@ except ImportError:
     ETE3_AVAILABLE = False
     logger.warning("ete3 not available - tree manipulation will be limited")
 
+try:
+    from ete3 import Tree, TreeStyle, NodeStyle, faces, AttrFace, CircleFace
+    ETE3_AVAILABLE = True
+    logger.info("✅ ete3 fully available")
+except ImportError as e:
+    logger.warning(f"⚠️ ete3 import issue: {e}")
+    try:
+        from ete3 import Tree
+        ETE3_AVAILABLE = True
+        logger.info("✅ ete3 Tree available (limited features)")
+    except ImportError:
+        ETE3_AVAILABLE = False
+        logger.warning("❌ ete3 not available - tree manipulation will be limited")
+
 
 class PublicationPlotGenerator:
     """
@@ -42,7 +56,7 @@ class PublicationPlotGenerator:
         
         if not self.pub_config.get('publication_suite', {}).get('enabled', False):
             logger.info("Publication suite disabled in config")
-            return
+            return {}
             
         logger.info("🎨 Creating publication-quality visualization suite...")
         
@@ -67,13 +81,14 @@ class PublicationPlotGenerator:
         for plot_type, plot_data in results.items():
             if isinstance(plot_data, dict):
                 for plot_name, plot_path in plot_data.items():
-                    self.registry.register_file(
-                        f'publication_{plot_type}_{plot_name}',
-                        plot_path,
-                        'visualization',
-                        f'Publication-quality {plot_type}: {plot_name}'
-                    )
-        
+                    if plot_path and Path(plot_path).exists():
+                        self.registry.register_file(
+                            f'publication_{plot_type}_{plot_name}',
+                            plot_path,
+                            file_type='plot',  # FIXED: was 'visualization'
+                            description=f'Publication-quality {plot_type}: {plot_name}'
+                        )
+
         logger.info(f"✅ Publication suite completed: {len(results)} plot types created")
         return results
     
@@ -85,10 +100,16 @@ class PublicationPlotGenerator:
         synteny_dir = output_dir / 'synteny_curves'
         synteny_dir.mkdir(exist_ok=True)
         
-        synteny_plotter_path = self.pub_config.get('external_tools', {}).get('synteny_plotter')
+        # CORRECTED: Check for R script, not Python script
+        synteny_plotter_dir = self.pub_config.get('external_tools', {}).get('synteny_plotter')
         
-        if not synteny_plotter_path or not Path(synteny_plotter_path).exists():
-            logger.warning(f"Synteny plotter not found: {synteny_plotter_path}")
+        if synteny_plotter_dir:
+            synteny_plotter_path = Path(synteny_plotter_dir) / 'scripts' / 'generate_synteny_plot.R'
+        else:
+            synteny_plotter_path = None
+        
+        if not synteny_plotter_path or not synteny_plotter_path.exists():
+            logger.warning(f"Synteny plotter R script not found: {synteny_plotter_path}")
             logger.info("  Creating fallback matplotlib synteny plots...")
             return self._create_fallback_synteny_plots(all_results, synteny_dir)
         
@@ -135,120 +156,201 @@ class PublicationPlotGenerator:
         return results
     
     def _prepare_synteny_plotter_input(self, ortholog_df: pd.DataFrame, inversion_df: pd.DataFrame,
-                                     species1: str, species2: str, output_dir: Path) -> Dict:
-        """Convert ortholog data to synteny_plotter BED format"""
+                                    species1: str, species2: str, output_dir: Path) -> Dict:
+        """Convert ortholog data to synteny_plotter BUSCO TSV format"""
         
-        temp_dir = output_dir / f'temp_{species1}_vs_{species2}'
+        # Get the synteny_plotter directory for relative paths
+        synteny_plotter_dir = Path(self.pub_config['external_tools']['synteny_plotter'])
+        
+        # Create temp directory INSIDE synteny_plotter for relative paths
+        temp_dir = synteny_plotter_dir / f'temp_{species1}_vs_{species2}'
         temp_dir.mkdir(exist_ok=True)
         
-        # Create BED files for each species
-        bed1_data = []
-        bed2_data = []
-        links_data = []
+        # Create BUSCO TSV files (format matches the test data we saw)
+        # Header format: # Busco id	Status	Sequence	Gene Start	Gene End	Strand	Score	Length	OrthoDB url	Description
+        
+        busco1_data = []
+        busco2_data = []
         
         for _, row in ortholog_df.iterrows():
-            # BED format: chr start end name score strand
-            bed1_data.append([
-                row['first_chromosome'],
-                int(row['first_start']),
-                int(row['first_end']),
-                row['busco_id'],
-                int(row['similarity'] * 1000),  # Convert to integer score
-                row.get('first_strand', '+')
-            ])
+            # BUSCO TSV format for species 1 (reference)
+            busco1_data.append({
+                'Busco id': row['busco_id'],
+                'Status': 'Complete',
+                'Sequence': row['first_chromosome'], 
+                'Gene Start': int(row['first_start']),
+                'Gene End': int(row['first_end']),
+                'Strand': row.get('first_strand', '+'),
+                'Score': row['similarity'],
+                'Length': int(row['first_end']) - int(row['first_start']),
+                'OrthoDB url': f"https://www.orthodb.org/v10?query={row['busco_id']}",
+                'Description': row['busco_id']
+            })
             
-            bed2_data.append([
-                row['second_chromosome'],
-                int(row['second_start']),
-                int(row['second_end']),
-                row['busco_id'],
-                int(row['similarity'] * 1000),
-                row.get('second_strand', '+')
-            ])
+            # BUSCO TSV format for species 2 (query)
+            busco2_data.append({
+                'Busco id': row['busco_id'],
+                'Status': 'Complete',
+                'Sequence': row['second_chromosome'],
+                'Gene Start': int(row['second_start']),
+                'Gene End': int(row['second_end']),
+                'Strand': row.get('second_strand', '+'),
+                'Score': row['similarity'],
+                'Length': int(row['second_end']) - int(row['second_start']),
+                'OrthoDB url': f"https://www.orthodb.org/v10?query={row['busco_id']}",
+                'Description': row['busco_id']
+            })
+        
+        # Write BUSCO TSV files with headers matching the format
+        busco1_file = temp_dir / f'{species1}.tsv'
+        busco2_file = temp_dir / f'{species2}.tsv'
+        
+        # Write with BUSCO-style headers
+        with open(busco1_file, 'w') as f:
+            f.write("# BUSCO version is: 5.0.0\n")
+            f.write("# The lineage dataset is: custom (Creation date: 2025-07-25, number of BUSCOs: custom)\n")
+            f.write("# Busco id\tStatus\tSequence\tGene Start\tGene End\tStrand\tScore\tLength\tOrthoDB url\tDescription\n")
             
-            # Links format: chr1 start1 end1 chr2 start2 end2 similarity
-            links_data.append([
-                row['first_chromosome'],
-                int(row['first_start']),
-                int(row['first_end']),
-                row['second_chromosome'],
-                int(row['second_start']),
-                int(row['second_end']),
-                row['similarity']
-            ])
+            df1 = pd.DataFrame(busco1_data)
+            df1.to_csv(f, sep='\t', index=False, header=False)
         
-        # Write files
-        bed1_file = temp_dir / f'{species1}.bed'
-        bed2_file = temp_dir / f'{species2}.bed'
-        links_file = temp_dir / f'{species1}_vs_{species2}_links.tsv'
+        with open(busco2_file, 'w') as f:
+            f.write("# BUSCO version is: 5.0.0\n")
+            f.write("# The lineage dataset is: custom (Creation date: 2025-07-25, number of BUSCOs: custom)\n") 
+            f.write("# Busco id\tStatus\tSequence\tGene Start\tGene End\tStrand\tScore\tLength\tOrthoDB url\tDescription\n")
+            
+            df2 = pd.DataFrame(busco2_data)
+            df2.to_csv(f, sep='\t', index=False, header=False)
         
-        # Write BED files
-        with open(bed1_file, 'w') as f:
-            for row in bed1_data:
-                f.write('\t'.join(map(str, row)) + '\n')
+        # Create chromosome info files (chr, length, order, direction)
+        # Extract chromosome info from ortholog data
+        chrom1_info = {}
+        chrom2_info = {}
+        
+        for _, row in ortholog_df.iterrows():
+            chr1 = row['first_chromosome']
+            chr2 = row['second_chromosome']
+            
+            if chr1 not in chrom1_info:
+                max_end = ortholog_df[ortholog_df['first_chromosome'] == chr1]['first_end'].max()
+                chrom1_info[chr1] = {
+                    'chr': chr1,
+                    'length': max_end,
+                    'order': len(chrom1_info) + 1,
+                    'direction': 1  # Default direction
+                }
                 
-        with open(bed2_file, 'w') as f:
-            for row in bed2_data:
-                f.write('\t'.join(map(str, row)) + '\n')
+            if chr2 not in chrom2_info:
+                max_end = ortholog_df[ortholog_df['second_chromosome'] == chr2]['second_end'].max()
+                chrom2_info[chr2] = {
+                    'chr': chr2,
+                    'length': max_end,
+                    'order': len(chrom2_info) + 1,
+                    'direction': 1  # Default direction
+                }
         
-        # Write links file
-        with open(links_file, 'w') as f:
-            f.write('chr1\tstart1\tend1\tchr2\tstart2\tend2\tsimilarity\n')
-            for row in links_data:
-                f.write('\t'.join(map(str, row)) + '\n')
+        # Write chromosome info files (no headers, just data)
+        chrom1_file = temp_dir / f'{species1}_info.tsv'
+        chrom2_file = temp_dir / f'{species2}_info.tsv'
+        
+        pd.DataFrame(list(chrom1_info.values())).to_csv(chrom1_file, sep='\t', index=False, header=False)
+        pd.DataFrame(list(chrom2_info.values())).to_csv(chrom2_file, sep='\t', index=False, header=False)
         
         return {
-            'bed1': bed1_file,
-            'bed2': bed2_file,
-            'links': links_file,
+            'busco1': busco1_file,
+            'busco2': busco2_file, 
+            'chrom1': chrom1_file,
+            'chrom2': chrom2_file,
             'temp_dir': temp_dir
         }
     
     def _run_synteny_plotter(self, temp_files: Dict, output_plot: Path, 
-                           species1: str, species2: str) -> bool:
-        """Run synteny_plotter with the prepared input files"""
+                        species1: str, species2: str) -> bool:
+        """Run Charlotte's R-based synteny_plotter with the correct argument format"""
         
-        synteny_config = self.pub_config.get('synteny_visualization', {})
-        options = synteny_config.get('options', {})
+        # Get the path to the synteny_plotter directory
+        synteny_plotter_dir = Path(self.pub_config['external_tools']['synteny_plotter'])
+        r_script_path = synteny_plotter_dir / 'scripts' / 'generate_synteny_plot.R'
         
+        if not r_script_path.exists():
+            logger.error(f"R script not found: {r_script_path}")
+            return False
+        
+        # Build R command with CORRECT argument format:
+        # -busco1 + -chrom1 for reference species
+        # -busco_list + -chrom_list for query species
+
         cmd = [
-            'python', self.pub_config['external_tools']['synteny_plotter'],
-            '--bed1', str(temp_files['bed1']),
-            '--bed2', str(temp_files['bed2']),
-            '--links', str(temp_files['links']),
-            '--output', str(output_plot),
-            '--species1', species1,
-            '--species2', species2
+            'Rscript', 'scripts/generate_synteny_plot.R',
+            '-busco1', f"{temp_files['busco1'].relative_to(synteny_plotter_dir)}",  # Reference species
+            '-chrom1', f"{temp_files['chrom1'].relative_to(synteny_plotter_dir)}",  # Reference chr info
+            '-busco_list', f"{temp_files['busco2'].relative_to(synteny_plotter_dir)}",  # Query species
+            '-chrom_list', f"{temp_files['chrom2'].relative_to(synteny_plotter_dir)}",  # Query chr info
+            '-o', str(output_plot.with_suffix('').name)  # Output prefix
         ]
         
         # Add optional parameters
-        if options.get('curved', True):
-            cmd.append('--curved')
-        if options.get('color_by'):
-            cmd.extend(['--color_by', options['color_by']])
-        if options.get('figure_width'):
-            cmd.extend(['--figure_width', str(options['figure_width'])])
-        if options.get('figure_height'):
-            cmd.extend(['--figure_height', str(options['figure_height'])])
-        if options.get('dpi'):
-            cmd.extend(['--dpi', str(options['dpi'])])
+        synteny_config = self.pub_config.get('synteny_visualization', {})
+        options = synteny_config.get('options', {})
+        
+        if options.get('filter_threshold'):
+            cmd.extend(['-f', str(options['filter_threshold'])])
+        if options.get('gap'):
+            cmd.extend(['-g', str(options['gap'])])
+        if options.get('alpha'):
+            cmd.extend(['-alpha', str(options['alpha'])])
         
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            logger.info(f"Running synteny_plotter: {' '.join(cmd)}")
+            logger.info(f"Working directory: {synteny_plotter_dir}")
+            
+            result = subprocess.run(
+                cmd, 
+                capture_output=True, 
+                text=True, 
+                check=True,
+                cwd=str(synteny_plotter_dir)  # CRITICAL: Run from synteny_plotter directory
+            )
+            
+            logger.info(f"Synteny plotter stdout: {result.stdout}")
             
             # Clean up temp files
             if temp_files['temp_dir'].exists():
                 shutil.rmtree(temp_files['temp_dir'])
             
-            return output_plot.exists()
+            # R script creates output in its working directory, move to expected location
+            # Check for various possible output files
+            possible_outputs = []
+            for ext in ['.png', '.pdf', '.svg', '']:
+                possible_outputs.append(synteny_plotter_dir / f"{output_plot.with_suffix('').name}{ext}")
+            
+            output_created = False
+            for possible_output in possible_outputs:
+                if possible_output.exists():
+                    # Move to expected location
+                    final_output = output_plot.with_suffix(possible_output.suffix or '.png')
+                    shutil.move(str(possible_output), str(final_output))
+                    logger.info(f"Moved output: {possible_output} -> {final_output}")
+                    output_created = True
+                    break
+            
+            if not output_created:
+                logger.warning("Synteny plotter completed but no output file found")
+                # List what files were created
+                created_files = list(synteny_plotter_dir.glob(f"{output_plot.with_suffix('').name}*"))
+                if created_files:
+                    logger.info(f"Files created: {[f.name for f in created_files]}")
+            
+            return output_created
             
         except subprocess.CalledProcessError as e:
             logger.error(f"Synteny plotter failed: {e.stderr}")
+            logger.error(f"Command: {' '.join(cmd)}")
             return False
         except Exception as e:
             logger.error(f"Error running synteny plotter: {e}")
             return False
-    
+
     def _create_fallback_synteny_plots(self, all_results: Dict, output_dir: Path) -> Dict:
         """Create matplotlib-based synteny plots as fallback"""
         
@@ -278,122 +380,6 @@ class PublicationPlotGenerator:
         
         return results
     
-    # def _create_single_fallback_plot(self, ortholog_df: pd.DataFrame, inversion_df: pd.DataFrame,
-    #                         species1: str, species2: str, output_dir: Path) -> Optional[Path]:
-    #     """Create a single matplotlib synteny plot with curved connections"""
-        
-    #     if ortholog_df.empty:
-    #         return None
-        
-    #     try:
-    #         fig, ax = plt.subplots(figsize=(14, 10))
-            
-    #         # Use correct column names directly (no renaming needed)
-    #         # Get chromosome information using the actual column names
-    #         chr1_list = sorted(ortholog_df['first_chr'].unique())
-    #         chr2_list = sorted(ortholog_df['second_chr'].unique())
-            
-    #         # Create chromosome positions
-    #         chr1_positions = {chr_name: i for i, chr_name in enumerate(chr1_list)}
-    #         chr2_positions = {chr_name: i for i, chr_name in enumerate(chr2_list)}
-            
-    #         y1_base = 0.7  # Species 1 y-position
-    #         y2_base = 0.3  # Species 2 y-position
-            
-    #         # Plot chromosome backbones
-    #         for i, chr_name in enumerate(chr1_list):
-    #             ax.plot([0, 1], [y1_base + i*0.05, y1_base + i*0.05], 'k-', linewidth=3, alpha=0.7)
-    #             # Truncate long chromosome names
-    #             display_name = str(chr_name)[:10] + "..." if len(str(chr_name)) > 10 else str(chr_name)
-    #             ax.text(-0.05, y1_base + i*0.05, display_name, ha='right', va='center', fontsize=8)
-            
-    #         for i, chr_name in enumerate(chr2_list):
-    #             ax.plot([0, 1], [y2_base - i*0.05, y2_base - i*0.05], 'k-', linewidth=3, alpha=0.7)
-    #             # Truncate long chromosome names
-    #             display_name = str(chr_name)[:10] + "..." if len(str(chr_name)) > 10 else str(chr_name)
-    #             ax.text(-0.05, y2_base - i*0.05, display_name, ha='right', va='center', fontsize=8)
-            
-    #         # Plot ortholog connections with curves
-    #         for _, row in ortholog_df.iterrows():
-    #             try:
-    #                 chr1_idx = chr1_positions[row['first_chr']]
-    #                 chr2_idx = chr2_positions[row['second_chr']]
-                    
-    #                 y1 = y1_base + chr1_idx * 0.05
-    #                 y2 = y2_base - chr2_idx * 0.05
-                    
-    #                 # Normalized positions along chromosomes (simple approach)
-    #                 x1 = 0.1 + 0.8 * ((row['first_start'] % 10000000) / 10000000)
-    #                 x2 = 0.1 + 0.8 * ((row['second_start'] % 10000000) / 10000000)
-                    
-    #                 # Color by similarity
-    #                 # color = cm.get_cmap('viridis')(row['similarity'])
-    #                 alpha = 0.6
-                    
-    #                 # Check if this is an inversion (simple check)
-    #                 is_inversion = False
-    #                 if not inversion_df.empty and 'genes' in inversion_df.columns:
-    #                     for _, inv_row in inversion_df.iterrows():
-    #                         if row['busco_id'] in str(inv_row.get('genes', '')):
-    #                             is_inversion = True
-    #                             break
-                    
-    #                 if is_inversion:
-    #                     color = 'red'
-    #                     alpha = 0.8
-                    
-    #                 # Create curved connection
-    #                 x_curve = np.linspace(x1, x2, 50)
-    #                 y_curve = []
-                    
-    #                 for x in x_curve:
-    #                     # Bezier-like curve
-    #                     t = (x - x1) / (x2 - x1) if x2 != x1 else 0
-    #                     y = y1 * (1 - t) + y2 * t + 0.1 * np.sin(np.pi * t)  # Add curve
-    #                     y_curve.append(y)
-                    
-    #                 ax.plot(x_curve, y_curve, color=color, alpha=alpha, linewidth=1)
-                    
-    #             except (KeyError, ValueError) as e:
-    #                 # Skip problematic rows
-    #                 continue
-            
-    #         # Styling
-    #         ax.set_xlim(-0.2, 1.1)
-    #         ax.set_ylim(min(y2_base - len(chr2_list)*0.05, y1_base - 0.1), 
-    #                 max(y1_base + len(chr1_list)*0.05, y2_base + 0.1))
-            
-    #         ax.set_title(f'Synteny Plot: {species1} vs {species2}', fontsize=16, fontweight='bold')
-    #         ax.text(0.5, y1_base + len(chr1_list)*0.05 + 0.05, species1, 
-    #             ha='center', va='bottom', fontsize=14, fontweight='bold')
-    #         ax.text(0.5, y2_base - len(chr2_list)*0.05 - 0.05, species2, 
-    #             ha='center', va='top', fontsize=14, fontweight='bold')
-            
-    #         ax.axis('off')
-            
-    #         # Add colorbar
-    #         sm = cm.ScalarMappable(cmap='viridis', norm=Normalize(vmin=0, vmax=1))
-    #         sm.set_array([])
-    #         cbar = plt.colorbar(sm, ax=ax, shrink=0.6, pad=0.02)
-    #         cbar.set_label('Similarity', rotation=270, labelpad=15)
-            
-    #         plt.tight_layout()
-            
-    #         # Save plot
-    #         plot_file = output_dir / f'matplotlib_synteny_{species1}_vs_{species2}.png'
-    #         plt.savefig(plot_file, dpi=300, bbox_inches='tight')
-    #         plt.close()
-            
-    #         return plot_file
-            
-    #     except Exception as e:
-    #         logger.error(f"Fallback plot creation failed: {e}")
-    #         import traceback
-    #         traceback.print_exc()
-    #         plt.close()
-    #         return None
-
-
     def _create_single_fallback_plot(self, ortholog_df: pd.DataFrame, inversion_df: pd.DataFrame,
                                species1: str, species2: str, output_dir: Path) -> Optional[Path]:
         """Create a single matplotlib synteny plot with curved connections"""
@@ -503,7 +489,6 @@ class PublicationPlotGenerator:
             if 'fig' in locals():
                 plt.close()
             return None
-    
     
     def _create_annotated_phylogeny(self, all_results: Dict, species_stats: Dict, 
                                   output_dir: Path) -> Dict:
@@ -735,58 +720,75 @@ class PublicationPlotGenerator:
             self._create_matplotlib_tree_plot(inversion_data, output_file)
     
     def _create_ete3_tree_plot(self, tree: 'Tree', output_file: Path, inversion_data: Dict):
-        """Create tree plot using ete3"""
-        
-        from ete3 import TreeStyle, NodeStyle, faces, AttrFace
-        
-        # Create tree style
-        ts = TreeStyle()
-        ts.show_leaf_name = True
-        ts.show_branch_length = True
-        ts.show_branch_support = True
-        ts.mode = "r"  # rectangular
-        ts.scale = 200
-        
-        # Color nodes based on inversion rate
-        for node in tree.traverse():
-            ns = NodeStyle()
-            
-            if node.is_leaf():
-                # Color leaf nodes by inversion rate
-                if hasattr(node, 'normalized_score'):
-                    score = node.normalized_score
-                    color_intensity = int(255 * (1 - score))  # Higher score = redder
-                    ns.bgcolor = f"rgb(255,{color_intensity},{color_intensity})"
-                    ns.size = 10
-                else:
-                    ns.bgcolor = "lightblue"
-                    ns.size = 8
-                
-                # Add inversion count as text
-                if hasattr(node, 'inversion_count'):
-                    count_face = AttrFace("inversion_count", fsize=8)
-                    node.add_face(count_face, column=1, position="branch-right")
-            else:
-                # Internal nodes
-                ns.size = 5
-                ns.shape = "square"
-                if hasattr(node, 'normalized_score'):
-                    score = node.normalized_score
-                    color_intensity = int(255 * (1 - score))
-                    ns.bgcolor = f"rgb(255,{color_intensity},{color_intensity})"
-                else:
-                    ns.bgcolor = "gray"
-            
-            node.set_style(ns)
-        
-        # Render tree
-        tree.render(str(output_file), tree_style=ts, dpi=300)
-        logger.info(f"    ✅ ETE3 tree plot created: {output_file}")
-    
-    def _create_matplotlib_tree_plot(self, inversion_data: Dict, output_file: Path):
-        """Create simple tree plot using matplotlib"""
+        """Create tree plot using ete3 with better error handling"""
         
         try:
+            from ete3 import TreeStyle, NodeStyle, AttrFace
+        except ImportError as e:
+            logger.error(f"Cannot import ete3 components: {e}")
+            return False
+
+        try:
+            # Create tree style
+            ts = TreeStyle()
+            ts.show_leaf_name = True
+            ts.show_branch_length = True
+            ts.show_branch_support = True
+            ts.mode = "r"  # rectangular
+            ts.scale = 200
+            
+            # Configure tree style
+            ts.branch_vertical_margin = 10
+            ts.scale = 120
+            
+            # Color nodes based on inversion rate
+            for node in tree.traverse():
+                ns = NodeStyle()
+                
+                if node.is_leaf():
+                    # Color leaf nodes by inversion rate
+                    if hasattr(node, 'normalized_score'):
+                        score = node.normalized_score
+                        color_intensity = int(255 * (1 - score))  # Higher score = redder
+                        ns.bgcolor = f"rgb(255,{color_intensity},{color_intensity})"
+                        ns.size = 10
+                    else:
+                        ns.bgcolor = "lightblue"
+                        ns.size = 8
+                    
+                    # Add inversion count as text
+                    if hasattr(node, 'inversion_count'):
+                        count_face = AttrFace("inversion_count", fsize=8)
+                        node.add_face(count_face, column=1, position="branch-right")
+                else:
+                    # Internal nodes
+                    ns.size = 5
+                    ns.shape = "square"
+                    if hasattr(node, 'normalized_score'):
+                        score = node.normalized_score
+                        color_intensity = int(255 * (1 - score))
+                        ns.bgcolor = f"rgb(255,{color_intensity},{color_intensity})"
+                    else:
+                        ns.bgcolor = "gray"
+                
+                node.set_style(ns)
+            
+            # Render tree
+            tree.render(str(output_file), tree_style=ts, dpi=300)
+            logger.info(f"    ✅ ETE3 tree plot created: {output_file}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"ETE3 tree plot creation failed: {e}")
+            return False
+    
+    def _create_matplotlib_tree_plot(self, inversion_data: Dict, output_file: Path):
+        """Create simple tree plot using matplotlib with proper linkage"""
+        
+        try:
+            from scipy.cluster.hierarchy import dendrogram, linkage
+            from scipy.spatial.distance import pdist
+            
             fig, ax = plt.subplots(figsize=(12, 8))
             
             species_names = list(inversion_data.keys())
@@ -798,44 +800,41 @@ class PublicationPlotGenerator:
                 plt.close()
                 return
             
-            # Create simple dendrogram-like structure
-            from scipy.cluster.hierarchy import dendrogram
-            from scipy.spatial.distance import pdist, squareform
-            
             # Create distance matrix based on inversion rates
             rates = [inversion_data[sp]['rate_per_mb'] for sp in species_names]
-            rate_matrix = np.array(rates).reshape(-1, 1)
             
-            if n_species > 1:
+            if n_species == 2:
+                # Special case for 2 species
+                distance = abs(rates[0] - rates[1]) if rates[0] != rates[1] else 0.1
+                linkage_matrix = np.array([[0, 1, distance, 2]])
+            else:
+                # For 3+ species, create proper distance matrix
+                rate_matrix = np.array(rates).reshape(-1, 1)
                 distances = pdist(rate_matrix, metric='euclidean')
+                linkage_matrix = linkage(distances, method='average')  # Use 'average' instead of 'ward'
+            
+            # Create dendrogram
+            dendro = dendrogram(linkage_matrix, labels=species_names, ax=ax, orientation='top')
+            
+            # Color-code by inversion rates
+            max_rate = max(rates) if rates else 1
+            for i, species in enumerate(species_names):
+                rate = inversion_data[species]['rate_per_mb']
+                normalized_rate = rate / max_rate if max_rate > 0 else 0
+                color = cm.get_cmap('Reds')(normalized_rate)
                 
-                # Simple linkage
-                linkage_matrix = []
-                for i in range(n_species - 1):
-                    # Simple clustering
-                    linkage_matrix.append([i, i+1, distances[0] if len(distances) > 0 else 1.0, 2])
-                
-                linkage_matrix = np.array(linkage_matrix)
-                
-                # Create dendrogram
-                dendro = dendrogram(linkage_matrix, labels=species_names, ax=ax)
-                
-                # Color-code by inversion rates
-                for i, species in enumerate(species_names):
-                    rate = inversion_data[species]['rate_per_mb']
-                    normalized_rate = rate / max(rates) if max(rates) > 0 else 0
-                    color = cm.get_cmap('Reds')(normalized_rate)
-                    
-                    # Add colored annotation
-                    ax.text(dendro['icoord'][i][1], -0.1, f"{rate:.2f} inv/Mb", 
-                           rotation=45, ha='right', va='top', color=color, fontweight='bold')
+                # Find the corresponding x position in the dendrogram
+                if i < len(dendro['icoord']):
+                    x_pos = (dendro['icoord'][i][1] + dendro['icoord'][i][2]) / 2
+                    ax.text(x_pos, -0.1, f"{rate:.2f}", 
+                        rotation=45, ha='right', va='top', color=color, fontweight='bold')
             
             ax.set_title('Bibionidae Phylogeny with Inversion Rates', fontsize=14, fontweight='bold')
             ax.set_ylabel('Distance')
             ax.set_xlabel('Species')
             
             # Add colorbar
-            sm = cm.ScalarMappable(cmap='Reds', norm=Normalize(vmin=0, vmax=max(rates)))
+            sm = cm.ScalarMappable(cmap='Reds', norm=Normalize(vmin=0, vmax=max_rate))
             sm.set_array([])
             cbar = plt.colorbar(sm, ax=ax, shrink=0.6)
             cbar.set_label('Inversion Rate (per Mb)', rotation=270, labelpad=15)
@@ -845,15 +844,19 @@ class PublicationPlotGenerator:
             plt.close()
             
             logger.info(f"    ✅ Matplotlib tree plot created: {output_file}")
+            return True
             
         except Exception as e:
             logger.error(f"Matplotlib tree plot failed: {e}")
-            # Create very simple plot
+            # Create simple bar plot fallback
             fig, ax = plt.subplots(figsize=(10, 6))
             species_names = list(inversion_data.keys())
             rates = [inversion_data[sp]['rate_per_mb'] for sp in species_names]
             
-            bars = ax.bar(species_names, rates, color=cm.get_cmap('Reds')([r/max(rates) if max(rates) > 0 else 0 for r in rates]))
+            max_rate = max(rates) if rates else 1
+            colors = [cm.get_cmap('Reds')(r/max_rate) for r in rates]
+            bars = ax.bar(species_names, rates, color=colors)
+            
             ax.set_title('Inversion Rates by Species', fontsize=14, fontweight='bold')
             ax.set_ylabel('Inversions per Mb')
             ax.set_xlabel('Species')
@@ -861,6 +864,7 @@ class PublicationPlotGenerator:
             plt.tight_layout()
             plt.savefig(output_file, dpi=300, bbox_inches='tight')
             plt.close()
+            return True
     
     def _create_tree_heatmap(self, inversion_data: Dict, output_file: Path):
         """Create heatmap showing inversion metrics across species"""
@@ -901,115 +905,110 @@ class PublicationPlotGenerator:
         except Exception as e:
             logger.error(f"Tree heatmap creation failed: {e}")
 
-
-# Integration function for existing visualization system
-def create_publication_plots(ortholog_df: pd.DataFrame, inversion_df: pd.DataFrame, 
-                           synteny_df: pd.DataFrame, registry, config: Dict, 
-                           output_dir: Path, species_stats: Dict = None):
-    """
-    Main integration function for publication plots
-    Can be called from existing visualization system
-    """
-    
-    logger.info("🎨 Creating publication-quality plots...")
-    
-    try:
-        # Create publication config if not exists
-        pub_config = config.get('publication_config', {
-            'publication_suite': {'enabled': True},
-            'synteny_visualization': {'enabled': True, 'options': {}},
-            'tree_annotation': {'enabled': True}
-        })
+    def create_publication_plots(ortholog_df: pd.DataFrame, inversion_df: pd.DataFrame, 
+                            synteny_df: pd.DataFrame, registry, config: Dict, 
+                            output_dir: Path, species_stats: Dict = None):
+        """
+        Main integration function for publication plots
+        Can be called from existing visualization system
+        """
         
-        # Update config
-        updated_config = config.copy()
-        updated_config['publication_config'] = pub_config
+        logger.info("🎨 Creating publication-quality plots...")
         
-        # Create plot generator
-        plot_generator = PublicationPlotGenerator(registry, updated_config)
-        
-        # Prepare all_results format (if coming from single analysis)
-        if not isinstance(ortholog_df, dict):
-            # Single pair analysis - convert to multi-species format
-            all_results = {
-                'single_pair': {
-                    'species_pair': ('Species_A', 'Species_B'),
-                    'ortholog_df': ortholog_df,
-                    'inversion_df': inversion_df,
-                    'synteny_df': synteny_df,
-                    'full_results': {
+        try:
+            # Create publication config if not exists
+            pub_config = config.get('publication_config', {
+                'publication_suite': {'enabled': True},
+                'synteny_visualization': {'enabled': True, 'options': {}},
+                'tree_annotation': {'enabled': True}
+            })
+            
+            # Update config
+            updated_config = config.copy()
+            updated_config['publication_config'] = pub_config
+            
+            # Create plot generator
+            plot_generator = PublicationPlotGenerator(registry, updated_config)
+            
+            # Prepare all_results format (if coming from single analysis)
+            if not isinstance(ortholog_df, dict):
+                # Single pair analysis - convert to multi-species format
+                all_results = {
+                    'single_pair': {
+                        'species_pair': ('Species_A', 'Species_B'),
                         'ortholog_df': ortholog_df,
                         'inversion_df': inversion_df,
-                        'synteny_df': synteny_df
+                        'synteny_df': synteny_df,
+                        'full_results': {
+                            'ortholog_df': ortholog_df,
+                            'inversion_df': inversion_df,
+                            'synteny_df': synteny_df
+                        }
                     }
                 }
-            }
+                
+                # Create dummy species stats if not provided
+                if species_stats is None:
+                    species_stats = {
+                        'Species_A': {
+                            'quality': {
+                                'metrics': {'total_length': 100000000},
+                                'quality_score': 0.8
+                            }
+                        },
+                        'Species_B': {
+                            'quality': {
+                                'metrics': {'total_length': 100000000},
+                                'quality_score': 0.8
+                            }
+                        }
+                    }
+            else:
+                # Multi-species format
+                all_results = ortholog_df  # ortholog_df is actually all_results in this case
             
-            # Create dummy species stats if not provided
-            if species_stats is None:
-                species_stats = {
-                    'Species_A': {
-                        'quality': {
-                            'metrics': {'total_length': 100000000},
-                            'quality_score': 0.8
-                        }
-                    },
-                    'Species_B': {
-                        'quality': {
-                            'metrics': {'total_length': 100000000},
-                            'quality_score': 0.8
-                        }
-                    }
+            # Create publication suite
+            results = plot_generator.create_publication_suite(all_results, species_stats, output_dir)
+            
+            logger.info("✅ Publication plots completed")
+            return results
+            
+        except Exception as e:
+            logger.error(f"Publication plots failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return {}
+
+    def create_curved_synteny_plot(ortholog_df: pd.DataFrame, inversion_df: pd.DataFrame,
+                                species1: str, species2: str, output_dir: Path,
+                                registry=None, config: Dict = None) -> Optional[Path]:
+        """Create a single curved synteny plot"""
+        
+        if config is None:
+            config = {'publication_config': {'synteny_visualization': {'enabled': True}}}
+        
+        plot_generator = PublicationPlotGenerator(registry, config)
+        
+        result = plot_generator._create_single_fallback_plot(
+            ortholog_df, inversion_df, species1, species2, output_dir
+        )
+        
+        return result
+
+    def create_annotated_phylogeny(all_results: Dict, species_stats: Dict, 
+                                tree_path: str, output_dir: Path,
+                                registry=None) -> Dict:
+        """Create annotated phylogenetic tree"""
+        
+        config = {
+            'publication_config': {
+                'tree_annotation': {
+                    'enabled': True,
+                    'source_tree_path': tree_path
                 }
-        else:
-            # Multi-species format
-            all_results = ortholog_df  # ortholog_df is actually all_results in this case
-        
-        # Create publication suite
-        results = plot_generator.create_publication_suite(all_results, species_stats, output_dir)
-        
-        logger.info("✅ Publication plots completed")
-        return results
-        
-    except Exception as e:
-        logger.error(f"Publication plots failed: {e}")
-        import traceback
-        traceback.print_exc()
-        return {}
-
-
-# Convenience functions for individual plot types
-def create_curved_synteny_plot(ortholog_df: pd.DataFrame, inversion_df: pd.DataFrame,
-                             species1: str, species2: str, output_dir: Path,
-                             registry=None, config: Dict = None) -> Optional[Path]:
-    """Create a single curved synteny plot"""
-    
-    if config is None:
-        config = {'publication_config': {'synteny_visualization': {'enabled': True}}}
-    
-    plot_generator = PublicationPlotGenerator(registry, config)
-    
-    result = plot_generator._create_single_fallback_plot(
-        ortholog_df, inversion_df, species1, species2, output_dir
-    )
-    
-    return result
-
-
-def create_annotated_phylogeny(all_results: Dict, species_stats: Dict, 
-                             tree_path: str, output_dir: Path,
-                             registry=None) -> Dict:
-    """Create annotated phylogenetic tree"""
-    
-    config = {
-        'publication_config': {
-            'tree_annotation': {
-                'enabled': True,
-                'source_tree_path': tree_path
             }
         }
-    }
-    
-    plot_generator = PublicationPlotGenerator(registry, config)
-    
-    return plot_generator._create_annotated_phylogeny(all_results, species_stats, output_dir)
+        
+        plot_generator = PublicationPlotGenerator(registry, config)
+        
+        return plot_generator._create_annotated_phylogeny(all_results, species_stats, output_dir)
