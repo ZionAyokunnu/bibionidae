@@ -261,6 +261,46 @@ def run_multi_species_analysis():
             print(f"  ❌ SyRI integration failed: {e}")
             import traceback
             traceback.print_exc()
+
+        # CREATE PUBLICATION PLOTS
+        print(f"\n🎨 Creating publication-quality plots...")
+
+        try:
+            from genome_inversion_analyser.config import PUBLICATION_CONFIG
+            from genome_inversion_analyser.visualization.publication_plots import create_publication_plots
+            
+            # Update config with publication settings
+            pub_config = {
+                'publication_config': PUBLICATION_CONFIG
+            }
+            
+            # Create publication plots
+            pub_results = create_publication_plots(
+                all_results,  # Pass all pairwise results
+                None,  # Not a single ortholog_df
+                None,  # Not a single inversion_df
+                registry,
+                pub_config,
+                phylo_output_dir,
+                species_stats
+            )
+            
+            if pub_results:
+                print(f"  ✅ Publication plots created:")
+                for plot_type, plots in pub_results.items():
+                    if isinstance(plots, dict):
+                        print(f"    • {plot_type}: {len(plots)} files")
+                        for name, path in plots.items():
+                            print(f"      ✓ {name}: {path}")
+                    else:
+                        print(f"    • {plot_type}: {plots}")
+            else:
+                print(f"  ⚠️ Publication plots returned empty")
+                
+        except Exception as e:
+            print(f"  ❌ Publication plots failed: {e}")
+            import traceback
+            traceback.print_exc()
         
         # CREATE PHYLOGENETIC TREE PLOTS
         print(f"\n🌳 Creating phylogenetic tree plots...")
