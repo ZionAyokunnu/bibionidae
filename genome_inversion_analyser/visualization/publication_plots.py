@@ -277,7 +277,7 @@ class PublicationPlotGenerator:
         return results
     
     def _create_single_fallback_plot(self, ortholog_df: pd.DataFrame, inversion_df: pd.DataFrame,
-                                   species1: str, species2: str, output_dir: Path) -> Optional[Path]:
+                                species1: str, species2: str, output_dir: Path) -> Optional[Path]:
         """Create a single matplotlib synteny plot with curved connections"""
         
         if ortholog_df.empty:
@@ -286,11 +286,12 @@ class PublicationPlotGenerator:
         try:
             fig, ax = plt.subplots(figsize=(14, 10))
             
-                    # column name mapping
+            # Fix column name mapping
             ortholog_df_mapped = ortholog_df.rename(columns={
                 'first_chr': 'first_chromosome',
                 'second_chr': 'second_chromosome'
             })
+            
             # Get chromosome information
             chr1_list = sorted(ortholog_df_mapped['first_chromosome'].unique())
             chr2_list = sorted(ortholog_df_mapped['second_chromosome'].unique())
@@ -312,19 +313,16 @@ class PublicationPlotGenerator:
                 ax.text(-0.05, y2_base - i*0.05, chr_name, ha='right', va='center', fontsize=8)
             
             # Plot ortholog connections with curves
-            for _, row in ortholog_df.iterrows():
+            for _, row in ortholog_df_mapped.iterrows():
                 chr1_idx = chr1_positions[row['first_chromosome']]
                 chr2_idx = chr2_positions[row['second_chromosome']]
                 
                 y1 = y1_base + chr1_idx * 0.05
                 y2 = y2_base - chr2_idx * 0.05
                 
-                # Normalized positions along chromosomes
-                x1 = row['first_start'] / (row['first_end'] - row['first_start'] + 1000000)  # Rough normalization
-                x2 = row['second_start'] / (row['second_end'] - row['second_start'] + 1000000)
-                
-                x1 = max(0.05, min(0.95, x1))  # Keep within bounds
-                x2 = max(0.05, min(0.95, x2))
+                # Normalized positions along chromosomes (improved calculation)
+                x1 = 0.1 + 0.8 * (row['first_start'] % 10000000) / 10000000  # Simple normalization
+                x2 = 0.1 + 0.8 * (row['second_start'] % 10000000) / 10000000
                 
                 # Color by similarity
                 color = plt.cm.viridis(row['similarity'])
@@ -358,13 +356,13 @@ class PublicationPlotGenerator:
             # Styling
             ax.set_xlim(-0.2, 1.1)
             ax.set_ylim(min(y2_base - len(chr2_list)*0.05, y1_base - 0.1), 
-                       max(y1_base + len(chr1_list)*0.05, y2_base + 0.1))
+                    max(y1_base + len(chr1_list)*0.05, y2_base + 0.1))
             
             ax.set_title(f'Synteny Plot: {species1} vs {species2}', fontsize=16, fontweight='bold')
             ax.text(0.5, y1_base + len(chr1_list)*0.05 + 0.05, species1, 
-                   ha='center', va='bottom', fontsize=14, fontweight='bold')
+                ha='center', va='bottom', fontsize=14, fontweight='bold')
             ax.text(0.5, y2_base - len(chr2_list)*0.05 - 0.05, species2, 
-                   ha='center', va='top', fontsize=14, fontweight='bold')
+                ha='center', va='top', fontsize=14, fontweight='bold')
             
             ax.axis('off')
             
@@ -446,6 +444,122 @@ class PublicationPlotGenerator:
             import traceback
             traceback.print_exc()
             return {}
+    
+
+        # def _create_single_fallback_plot(self, ortholog_df: pd.DataFrame, inversion_df: pd.DataFrame,
+        #                         species1: str, species2: str, output_dir: Path) -> Optional[Path]:
+        # """Create a single matplotlib synteny plot with curved connections"""
+        
+        # if ortholog_df.empty:
+        #     return None
+        
+        # try:
+        #     fig, ax = plt.subplots(figsize=(14, 10))
+            
+        #     # Use correct column names directly (no renaming needed)
+        #     # Get chromosome information using the actual column names
+        #     chr1_list = sorted(ortholog_df['first_chr'].unique())
+        #     chr2_list = sorted(ortholog_df['second_chr'].unique())
+            
+        #     # Create chromosome positions
+        #     chr1_positions = {chr_name: i for i, chr_name in enumerate(chr1_list)}
+        #     chr2_positions = {chr_name: i for i, chr_name in enumerate(chr2_list)}
+            
+        #     y1_base = 0.7  # Species 1 y-position
+        #     y2_base = 0.3  # Species 2 y-position
+            
+        #     # Plot chromosome backbones
+        #     for i, chr_name in enumerate(chr1_list):
+        #         ax.plot([0, 1], [y1_base + i*0.05, y1_base + i*0.05], 'k-', linewidth=3, alpha=0.7)
+        #         # Truncate long chromosome names
+        #         display_name = str(chr_name)[:10] + "..." if len(str(chr_name)) > 10 else str(chr_name)
+        #         ax.text(-0.05, y1_base + i*0.05, display_name, ha='right', va='center', fontsize=8)
+            
+        #     for i, chr_name in enumerate(chr2_list):
+        #         ax.plot([0, 1], [y2_base - i*0.05, y2_base - i*0.05], 'k-', linewidth=3, alpha=0.7)
+        #         # Truncate long chromosome names
+        #         display_name = str(chr_name)[:10] + "..." if len(str(chr_name)) > 10 else str(chr_name)
+        #         ax.text(-0.05, y2_base - i*0.05, display_name, ha='right', va='center', fontsize=8)
+            
+        #     # Plot ortholog connections with curves
+        #     for _, row in ortholog_df.iterrows():
+        #         try:
+        #             chr1_idx = chr1_positions[row['first_chr']]
+        #             chr2_idx = chr2_positions[row['second_chr']]
+                    
+        #             y1 = y1_base + chr1_idx * 0.05
+        #             y2 = y2_base - chr2_idx * 0.05
+                    
+        #             # Normalized positions along chromosomes (simple approach)
+        #             x1 = 0.1 + 0.8 * ((row['first_start'] % 10000000) / 10000000)
+        #             x2 = 0.1 + 0.8 * ((row['second_start'] % 10000000) / 10000000)
+                    
+        #             # Color by similarity
+        #             color = plt.cm.viridis(row['similarity'])
+        #             alpha = 0.6
+                    
+        #             # Check if this is an inversion (simple check)
+        #             is_inversion = False
+        #             if not inversion_df.empty and 'genes' in inversion_df.columns:
+        #                 for _, inv_row in inversion_df.iterrows():
+        #                     if row['busco_id'] in str(inv_row.get('genes', '')):
+        #                         is_inversion = True
+        #                         break
+                    
+        #             if is_inversion:
+        #                 color = 'red'
+        #                 alpha = 0.8
+                    
+        #             # Create curved connection
+        #             x_curve = np.linspace(x1, x2, 50)
+        #             y_curve = []
+                    
+        #             for x in x_curve:
+        #                 # Bezier-like curve
+        #                 t = (x - x1) / (x2 - x1) if x2 != x1 else 0
+        #                 y = y1 * (1 - t) + y2 * t + 0.1 * np.sin(np.pi * t)  # Add curve
+        #                 y_curve.append(y)
+                    
+        #             ax.plot(x_curve, y_curve, color=color, alpha=alpha, linewidth=1)
+                    
+        #         except (KeyError, ValueError) as e:
+        #             # Skip problematic rows
+        #             continue
+            
+        #     # Styling
+        #     ax.set_xlim(-0.2, 1.1)
+        #     ax.set_ylim(min(y2_base - len(chr2_list)*0.05, y1_base - 0.1), 
+        #             max(y1_base + len(chr1_list)*0.05, y2_base + 0.1))
+            
+        #     ax.set_title(f'Synteny Plot: {species1} vs {species2}', fontsize=16, fontweight='bold')
+        #     ax.text(0.5, y1_base + len(chr1_list)*0.05 + 0.05, species1, 
+        #         ha='center', va='bottom', fontsize=14, fontweight='bold')
+        #     ax.text(0.5, y2_base - len(chr2_list)*0.05 - 0.05, species2, 
+        #         ha='center', va='top', fontsize=14, fontweight='bold')
+            
+        #     ax.axis('off')
+            
+        #     # Add colorbar
+        #     sm = plt.cm.ScalarMappable(cmap='viridis', norm=plt.Normalize(vmin=0, vmax=1))
+        #     sm.set_array([])
+        #     cbar = plt.colorbar(sm, ax=ax, shrink=0.6, pad=0.02)
+        #     cbar.set_label('Similarity', rotation=270, labelpad=15)
+            
+        #     plt.tight_layout()
+            
+        #     # Save plot
+        #     plot_file = output_dir / f'matplotlib_synteny_{species1}_vs_{species2}.png'
+        #     plt.savefig(plot_file, dpi=300, bbox_inches='tight')
+        #     plt.close()
+            
+        #     return plot_file
+            
+        # except Exception as e:
+        #     logger.error(f"Fallback plot creation failed: {e}")
+        #     import traceback
+        #     traceback.print_exc()
+        #     plt.close()
+        #     return None
     
     def _prune_diptera_tree(self, tree_path: str, target_species: List[str]) -> Optional['Tree']:
         """Prune large Diptera tree to target species"""
