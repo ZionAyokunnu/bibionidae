@@ -780,36 +780,61 @@ def check_minimap2_available():
 
 def select_best_buffer_results(bio_results, mm2_results, config):
     """Select best results when both Biopython and Minimap2 are run on buffer zone"""
-    # Create mapping of results by BUSCO ID
-    bio_map = {r['busco_id']: r for r in bio_results}
-    mm2_map = {r['busco_id']: r for r in mm2_results}
+    
+    if not bio_results:
+        return mm2_results if mm2_results else []
+    if not mm2_results:
+        return bio_results
+    
+    # Create mapping by both busco_id and pair
+    bio_map = {}
+    for r in bio_results:
+        key = (r.get('first_busco', ''), r.get('second_busco', ''))
+        if key != ('', ''):
+            bio_map[key] = r
+        elif 'busco_id' in r:
+            bio_map[r['busco_id']] = r
+    
+    mm2_map = {}
+    for r in mm2_results:
+        key = (r.get('first_busco', ''), r.get('second_busco', ''))
+        if key != ('', ''):
+            mm2_map[key] = r
+        elif 'busco_id' in r:
+            mm2_map[r['busco_id']] = r
     
     best_results = []
+    all_keys = set(bio_map.keys()) | set(mm2_map.keys())
     
-    all_buscos = set(bio_map.keys()) | set(mm2_map.keys())
-    
-    for busco_id in all_buscos:
-        bio_result = bio_map.get(busco_id)
-        mm2_result = mm2_map.get(busco_id)
+    for key in all_keys:
+        bio_result = bio_map.get(key)
+        mm2_result = mm2_map.get(key)
         
         if bio_result and mm2_result:
-            # Both methods succeeded - choose best based on confidence
-            bio_confidence = bio_result('confidence', 0.0)
-            mm2_confidence = mm2_result.get('confidence', 0.0)
-            if bio_confidence > mm2_confidence:
-                bio_result['validation_method'] = 'dual_validated'
-                bio_result['alternative_confidence'] = mm2_result['confidence']
-                best_results.append(bio_result)
+            # Both methods succeeded - choose best
+            bio_confidence = bio_result.get('confidence', bio_result.get('similarity', 0.0))
+            mm2_confidence = mm2_result.get('confidence', mm2_result.get('similarity', 0.0))
+            
+            if bio_confidence >= mm2_confidence:
+                chosen = bio_result.copy()
+                chosen['validation_method'] = 'dual_bio_selected'
+                chosen['alternative_score'] = mm2_confidence
             else:
-                mm2_result['validation_method'] = 'dual_validated'
-                mm2_result['alternative_confidence'] = bio_result['confidence']
-                best_results.append(mm2_result)
+                chosen = mm2_result.copy()
+                chosen['validation_method'] = 'dual_mm2_selected'
+                chosen['alternative_score'] = bio_confidence
+                
+            best_results.append(chosen)
+            
         elif bio_result:
-            bio_result['validation_method'] = 'biopython_only'
-            best_results.append(bio_result)
+            chosen = bio_result.copy()
+            chosen['validation_method'] = 'biopython_only'
+            best_results.append(chosen)
+            
         elif mm2_result:
-            mm2_result['validation_method'] = 'minimap2_only'
-            best_results.append(mm2_result)
+            chosen = mm2_result.copy()
+            chosen['validation_method'] = 'minimap2_only'
+            best_results.append(chosen)
     
     return best_results
 
