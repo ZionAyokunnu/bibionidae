@@ -246,7 +246,10 @@ class FileRegistry:
             elif file_type == 'pkl':
                 with open(file_path, 'wb') as f:
                     pickle.dump(data, f)
-            
+            elif file_type == 'plot':
+                if not file_path.exists():
+                    logger.warning(f"Plot file not found at expected location: {file_path}")
+                pass
             else:
                 raise ValueError(f"Unsupported file type: {file_type}")
                 

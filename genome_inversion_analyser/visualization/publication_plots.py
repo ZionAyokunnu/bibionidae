@@ -105,6 +105,7 @@ class PublicationPlotGenerator:
         
         if synteny_plotter_dir:
             synteny_plotter_path = Path(synteny_plotter_dir) / 'scripts' / 'generate_synteny_plot.R'
+            logger.info(f"DEBUG: Looking for R script at: {synteny_plotter_path.absolute()}")
         else:
             synteny_plotter_path = None
         
