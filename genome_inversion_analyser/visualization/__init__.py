@@ -22,7 +22,7 @@ from .publication_plots import (
     PublicationPlotGenerator,
     create_publication_plots,
     create_curved_synteny_plot,
-    create_annotated_phylogeny
+    create_annotated_phylogeny,
 )
 
 from .syri_integration import SyRIIntegrator
