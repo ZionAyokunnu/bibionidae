@@ -37,7 +37,7 @@ ENHANCED_HYBRID_CONFIG = {
     'minimap2_kmer_size': 17,             # Smaller k-mer for better sensitivity
     'minimap2_threads': 3,                # CPU cores to use
     'minimap2_min_score': 100,            # Minimum alignment score
-    'minimap2_min_identity': 0.7,         # Minimum identity percentage
+    'minimap2_min_identity': 0.4,         # Minimum identity percentage
     'minimap2_extra_flags': '-c --cs',    # Additional flags for detailed output
     
     # Biopython alignment settings (for short sequences)
@@ -66,7 +66,7 @@ ENHANCED_HYBRID_CONFIG = {
     # Quality control and validation
     'validate_alignment_consistency': True, # Check for coordinate mismatches
     'flag_discrepant_alignments': True,   # Mark suspicious alignments for review
-    'alignment_length_ratio_min': 0.7,    # Min alignment_length/gene_length
+    'alignment_length_ratio_min': 0.4,    # Min alignment_length/gene_length
     'cross_validate_buffer_zone': True,   # Run both methods on buffer zone genes
     
     # Performance and debugging
@@ -83,37 +83,37 @@ ENHANCED_HYBRID_CONFIG = {
     'timeout_per_alignment': 30,          # Seconds before timing out alignment
     
     # ==== STANDARD CONFIGURATION PARAMETERS ====
-    'base_similarity_threshold': 0.5,
-    'high_quality_similarity_threshold': 0.8,
-    'medium_quality_similarity_threshold': 0.6, 
+    'base_similarity_threshold': 0.4,
+    'high_quality_similarity_threshold': 0.6,
+    'medium_quality_similarity_threshold': 0.5, 
     'low_quality_similarity_threshold': 0.3,
     'fragmented_assembly_similarity_threshold': 0.2,
     
-    'base_min_busco_length': 150,
-    'high_quality_min_length': 200,
-    'medium_quality_min_length': 150,
-    'low_quality_min_length': 100,
-    'fragmented_assembly_min_length': 50,
+    'base_min_busco_length': 100,
+    'high_quality_min_length': 150,
+    'medium_quality_min_length': 125,
+    'low_quality_min_length': 50,
+    'fragmented_assembly_min_length': 30,
     
-    'base_min_genes_per_chromosome': 3,
-    'base_synteny_correlation_threshold': 0.5,
+    'base_min_genes_per_chromosome': 1,
+    'base_synteny_correlation_threshold': 0.4,
     'relaxed_correlation_threshold': 0.3,
-    'strict_correlation_threshold': 0.8,
+    'strict_correlation_threshold': 0.5,
     
-    'base_min_synteny_block_size': 3,
+    'base_min_synteny_block_size': 1,
     'micro_synteny_block_size': 1,
-    'base_max_gap_in_synteny': 1000000,
+    'base_max_gap_in_synteny': 10000000,
     'adaptive_max_gap_multiplier': 2.0,
     
-    'base_min_inversion_size': 2,
+    'base_min_inversion_size': 1,
     'micro_inversion_size': 1,
-    'strand_consistency_threshold': 0.6,
-    'inversion_confidence_threshold': 0.7,
+    'strand_consistency_threshold': 0.4,
+    'inversion_confidence_threshold': 0.5,
     
     # Quality assessment thresholds
-    'high_quality_busco_threshold': 0.95,
-    'medium_quality_busco_threshold': 0.85,
-    'low_quality_busco_threshold': 0.70,
+    'high_quality_busco_threshold': 0.6,
+    'medium_quality_busco_threshold': 0.4,
+    'low_quality_busco_threshold': 0.3,
     'high_quality_n50_threshold': 10000000,
     'medium_quality_n50_threshold': 1000000,
     
@@ -243,7 +243,7 @@ PUBLICATION_CONFIG = {
     
     # Charlotte's R-based synteny plotter settings (WORKING VERSION)
     'external_tools': {
-        'synteny_plotter': 'genome_inversion_analyser/external_tools/synteny_plotter'  # Directory path
+        'synteny_plotter': '/Users/za7/Documents/Bibionidae/genome_inversion_analyser/external_tools/synteny_plotter'
     },
     
     # Synteny visualization settings
@@ -284,5 +284,11 @@ PUBLICATION_CONFIG = {
         'create_all_plots': True,
         'high_quality_output': True,
         'create_supplementary_data': True
-    }
+    },
+
+    'busco_phylogeny': {
+        'enabled': True,  # ADD THIS
+        'approach': 'existing_tree',
+        'source_tree_path': 'diptera_clean_20species.newick'
+    },
 }

@@ -75,13 +75,13 @@ class PublicationPlotGenerator:
         # 2. Annotated phylogenetic tree
         if self.pub_config.get('tree_annotation', {}).get('enabled', False):
             logger.info("  🌳 Starting tree annotation...")
-            tree_results = self._create_annotated_phylogeny(all_results, species_stats, pub_dir)
+            tree_results = self.create_annotated_phylogeny(all_results, species_stats, pub_dir)
             results['annotated_trees'] = tree_results
             
         # 3. BUSCO phylogenetic tree
         if self.pub_config.get('busco_phylogeny', {}).get('enabled', False):
             logger.info("  🧬 Starting BUSCO phylogenetic tree...")
-            busco_tree_results = self._create_busco_phylogenetic_tree(all_results, species_stats, pub_dir)
+            busco_tree_results = self.create_busco_phylogenetic_tree(all_results, species_stats, pub_dir)
             results['busco_phylogenetic_tree'] = busco_tree_results
             
         # 4. Register all outputs
@@ -174,64 +174,44 @@ class PublicationPlotGenerator:
         temp_dir = synteny_plotter_dir / f'temp_{species1}_vs_{species2}'
         temp_dir.mkdir(exist_ok=True)
         
-        # Create BUSCO TSV files (format matches the test data we saw)
-        # Header format: # Busco id	Status	Sequence	Gene Start	Gene End	Strand	Score	Length	OrthoDB url	Description
-        
+        # Create BUSCO TSV files in the EXACT format the R script expects
         busco1_data = []
         busco2_data = []
         
         for _, row in ortholog_df.iterrows():
-            # BUSCO TSV format for species 1 (reference)
-            busco1_data.append({
-                'Busco id': row['busco_id'],
-                'Status': 'Complete',
-                'Sequence': row['first_chr'], 
-                'Gene Start': int(row['first_start']),
-                'Gene End': int(row['first_end']),
-                'Strand': row.get('first_strand', '+'),
-                'Score': row['similarity'],
-                'Length': int(row['first_end']) - int(row['first_start']),
-                'OrthoDB url': f"https://www.orthodb.org/v10?query={row['busco_id']}",
-                'Description': row['busco_id']
-            })
+            # Format for reference species (R prefix) - EXACT format for R script
+            busco1_data.append([
+                row['busco_id'],           # busco
+                'Complete',                # status  
+                row['first_chr'],          # chrR (will be renamed by R script)
+                int(row['first_start']),   # Rstart
+                int(row['first_end']),     # Rend
+                row.get('first_strand', '+')  # Rstrand
+            ])
             
-            # BUSCO TSV format for species 2 (query)
-            busco2_data.append({
-                'Busco id': row['busco_id'],
-                'Status': 'Complete',
-                'Sequence': row['second_chr'],
-                'Gene Start': int(row['second_start']),
-                'Gene End': int(row['second_end']),
-                'Strand': row.get('second_strand', '+'),
-                'Score': row['similarity'],
-                'Length': int(row['second_end']) - int(row['second_start']),
-                'OrthoDB url': f"https://www.orthodb.org/v10?query={row['busco_id']}",
-                'Description': row['busco_id']
-            })
+            # Format for query species (Q prefix) - EXACT format for R script
+            busco2_data.append([
+                row['busco_id'],           # busco
+                'Complete',                # status
+                row['second_chr'],         # chrQ (will be renamed by R script)
+                int(row['second_start']),  # Qstart
+                int(row['second_end']),    # Qend
+                row.get('second_strand', '+')  # Qstrand
+            ])
         
-        # Write BUSCO TSV files with headers matching the format
+        # Write BUSCO TSV files - NO HEADERS, just data (R script adds its own headers)
         busco1_file = temp_dir / f'{species1}.tsv'
         busco2_file = temp_dir / f'{species2}.tsv'
         
-        # Write with BUSCO-style headers
         with open(busco1_file, 'w') as f:
-            f.write("# BUSCO version is: 5.0.0\n")
-            f.write("# The lineage dataset is: custom (Creation date: 2025-07-25, number of BUSCOs: custom)\n")
-            f.write("# Busco id\tStatus\tSequence\tGene Start\tGene End\tStrand\tScore\tLength\tOrthoDB url\tDescription\n")
-            
-            df1 = pd.DataFrame(busco1_data)
-            df1.to_csv(f, sep='\t', index=False, header=False)
-        
+            for row in busco1_data:
+                f.write('\t'.join(map(str, row)) + '\n')
+
         with open(busco2_file, 'w') as f:
-            f.write("# BUSCO version is: 5.0.0\n")
-            f.write("# The lineage dataset is: custom (Creation date: 2025-07-25, number of BUSCOs: custom)\n") 
-            f.write("# Busco id\tStatus\tSequence\tGene Start\tGene End\tStrand\tScore\tLength\tOrthoDB url\tDescription\n")
-            
-            df2 = pd.DataFrame(busco2_data)
-            df2.to_csv(f, sep='\t', index=False, header=False)
+            for row in busco2_data:
+                f.write('\t'.join(map(str, row)) + '\n')
         
-        # Create chromosome info files (chr, length, order, direction)
-        # Extract chromosome info from ortholog data
+        # Create chromosome info files (chr, length, order, direction, invert)
         chrom1_info = {}
         chrom2_info = {}
         
@@ -245,7 +225,8 @@ class PublicationPlotGenerator:
                     'chr': chr1,
                     'length': max_end,
                     'order': len(chrom1_info) + 1,
-                    'direction': 1  # Default direction
+                    'direction': 1,
+                    'invert': 'FALSE'  # R script needs this column
                 }
                 
             if chr2 not in chrom2_info:
@@ -254,15 +235,16 @@ class PublicationPlotGenerator:
                     'chr': chr2,
                     'length': max_end,
                     'order': len(chrom2_info) + 1,
-                    'direction': 1  # Default direction
+                    'direction': 1,
+                    'invert': 'FALSE'  # R script needs this column
                 }
         
-        # Write chromosome info files (no headers, just data)
+        # Write chromosome info files WITH headers
         chrom1_file = temp_dir / f'{species1}_info.tsv'
         chrom2_file = temp_dir / f'{species2}_info.tsv'
         
-        pd.DataFrame(list(chrom1_info.values())).to_csv(chrom1_file, sep='\t', index=False, header=False)
-        pd.DataFrame(list(chrom2_info.values())).to_csv(chrom2_file, sep='\t', index=False, header=False)
+        pd.DataFrame(list(chrom1_info.values())).to_csv(chrom1_file, sep='\t', index=False, header=True)
+        pd.DataFrame(list(chrom2_info.values())).to_csv(chrom2_file, sep='\t', index=False, header=True)
         
         return {
             'busco1': busco1_file,
@@ -271,7 +253,6 @@ class PublicationPlotGenerator:
             'chrom2': chrom2_file,
             'temp_dir': temp_dir
         }
-    
     def _run_synteny_plotter(self, temp_files: Dict, output_plot: Path, 
                         species1: str, species2: str) -> bool:
         """Run Charlotte's R-based synteny_plotter with the correct argument format"""
@@ -498,7 +479,7 @@ class PublicationPlotGenerator:
                 plt.close()
             return None
     
-    def _create_annotated_phylogeny(self, all_results: Dict, species_stats: Dict, 
+    def create_annotated_phylogeny(self, all_results: Dict, species_stats: Dict, 
                                   output_dir: Path) -> Dict:
         """Create annotated phylogenetic tree from Diptera tree"""
         
@@ -912,6 +893,248 @@ class PublicationPlotGenerator:
             
         except Exception as e:
             logger.error(f"Tree heatmap creation failed: {e}")
+        
+    def create_busco_phylogenetic_tree(self, all_results: Dict, species_stats: Dict, output_dir: Path) -> Dict:
+        """Create phylogenetic tree from existing Newick file with configurable node annotations"""
+        
+        logger.info("  🌳 Creating BUSCO phylogenetic tree from existing file...")
+        
+        tree_config = self.pub_config.get('tree_annotation', {})
+        source_tree = tree_config.get('source_tree_path', 'diptera_clean_20species.newick')
+        
+        if not Path(source_tree).exists():
+            logger.warning(f"Source tree file not found: {source_tree}")
+            return {}
+        
+        try:
+            from ete3 import Tree
+            
+            # Load the tree
+            tree = Tree(source_tree)
+            logger.info(f"    • Loaded tree with {len(tree)} nodes")
+            
+            # Get species names
+            species_names = list(species_stats.keys())
+            logger.info(f"    • Target species: {species_names}")
+            
+            # Prune tree to target species (if enabled)
+            if tree_config.get('prune_to_target_species', True):
+                tree = self.prune_tree_to_species(tree, species_names)
+                if tree is None:
+                    logger.warning("Tree pruning failed")
+                    return {}
+            
+            # Calculate metrics for node annotation
+            node_metrics = self.calculate_tree_node_metrics(all_results, species_stats)
+            
+            # Annotate tree with metrics
+            annotated_tree = self.annotate_tree_nodes(tree, node_metrics)
+            
+            # Create tree plots
+            tree_dir = output_dir / 'busco_phylogenetic_trees'
+            tree_dir.mkdir(exist_ok=True)
+            
+            results = {}
+            
+            # Save annotated tree
+            tree_file = tree_dir / 'busco_phylogenetic_tree.newick'
+            annotated_tree.write(format=1, outfile=str(tree_file))
+            results['newick'] = tree_file
+            
+            # Create tree plot
+            plot_file = tree_dir / 'busco_phylogenetic_tree.png'
+            self.create_annotated_tree_plot(annotated_tree, plot_file, node_metrics)
+            results['plot'] = plot_file
+            
+            logger.info(f"    ✅ BUSCO phylogenetic tree created: {len(results)} outputs")
+            return results
+            
+        except ImportError:
+            logger.error("ete3 required for phylogenetic tree manipulation")
+            return {}
+        except Exception as e:
+            logger.error(f"BUSCO phylogenetic tree creation failed: {e}")
+            return {}
+
+    def calculate_tree_node_metrics(self, all_results: Dict, species_stats: Dict) -> Dict:
+        """Calculate metrics for tree node annotation from config"""
+        
+        tree_config = self.pub_config.get('tree_annotation', {})
+        metrics_config = tree_config.get('annotation_metrics', {})
+        
+        node_metrics = {}
+        
+        for species_name, stats in species_stats.items():
+            metrics = {}
+            
+            # Default metric: inversion rate per MB
+            if metrics_config.get('inversion_rate_per_mb', True):
+                genome_size = stats['quality']['metrics'].get('total_length', 1000000)
+                species_inversions = sum(1 for pair_results in all_results.values() 
+                                    if 'full_results' in pair_results and 
+                                    species_name in pair_results['species_pair'] and
+                                    len(pair_results['inversion_df']) > 0)
+                metrics['inversion_rate_per_mb'] = species_inversions / (genome_size / 1_000_000)
+            
+            # Inversion count
+            if metrics_config.get('inversion_count', True):
+                species_inversions = []
+                for pair_results in all_results.values():
+                    if 'full_results' in pair_results and species_name in pair_results['species_pair']:
+                        species_inversions.extend(pair_results['inversion_df'].to_dict('records'))
+                metrics['inversion_count'] = len(species_inversions)
+            
+            # Normalized inversion score
+            if metrics_config.get('normalized_inversion_score', True):
+                if 'inversion_rate_per_mb' in metrics:
+                    all_rates = [node_metrics.get(sp, {}).get('inversion_rate_per_mb', 0) 
+                            for sp in species_stats.keys()]
+                    max_rate = max(all_rates + [metrics['inversion_rate_per_mb']])
+                    metrics['normalized_score'] = metrics['inversion_rate_per_mb'] / max_rate if max_rate > 0 else 0
+            
+            # Assembly quality
+            if metrics_config.get('assembly_quality', False):
+                metrics['quality_score'] = stats['quality'].get('quality_score', 0.5)
+            
+            # Genome size
+            if metrics_config.get('genome_size', False):
+                metrics['genome_size_mb'] = stats['quality']['metrics'].get('total_length', 0) / 1_000_000
+            
+            node_metrics[species_name] = metrics
+        
+        return node_metrics
+
+    def prune_tree_to_species(self, tree: 'Tree', target_species: List[str]) -> Optional['Tree']:
+        """Prune tree to target species"""
+        try:
+            # Get all leaf names
+            leaf_names = [leaf.name for leaf in tree.get_leaves()]
+            
+            # Find matches (allowing partial matches)
+            species_in_tree = []
+            for species in target_species:
+                matches = [leaf for leaf in leaf_names if species in leaf or leaf in species]
+                if matches:
+                    species_in_tree.append(matches[0])  # Take first match
+                else:
+                    logger.warning(f"Species {species} not found in tree")
+            
+            if len(species_in_tree) < 2:
+                logger.error(f"Too few species found in tree: {species_in_tree}")
+                return None
+            
+            # Prune tree
+            tree.prune(species_in_tree)
+            logger.info(f"    • Pruned tree to {len(species_in_tree)} species: {species_in_tree}")
+            
+            return tree
+            
+        except Exception as e:
+            logger.error(f"Tree pruning failed: {e}")
+            return None
+
+    def annotate_tree_nodes(self, tree: 'Tree', node_metrics: Dict) -> 'Tree':
+        """Annotate tree nodes with calculated metrics"""
+        
+        for leaf in tree.get_leaves():
+            leaf_name = leaf.name
+            
+            # Find matching species (allowing partial matches)
+            matching_species = None
+            for species in node_metrics.keys():
+                if species in leaf_name or leaf_name in species:
+                    matching_species = species
+                    break
+            
+            if matching_species and matching_species in node_metrics:
+                metrics = node_metrics[matching_species]
+                
+                # Add metrics as node features
+                for metric_name, metric_value in metrics.items():
+                    setattr(leaf, metric_name, metric_value)
+        
+        return tree
+
+    # def create_annotated_tree_plot(self, tree: 'Tree', output_file: Path, node_metrics: Dict): # Uses ETE3 GUI components
+    #     """Create tree plot with node annotations"""
+        
+    #     try:
+    #         from ete3 import TreeStyle, NodeStyle, TextFace
+            
+    #         ts = TreeStyle()
+    #         ts.show_leaf_name = True
+    #         ts.show_branch_length = True
+    #         ts.mode = "r"  # rectangular
+    #         ts.scale = 120
+            
+    #         # Color nodes by primary metric (inversion rate)
+    #         primary_metric = 'inversion_rate_per_mb'
+    #         max_value = max(metrics.get(primary_metric, 0) for metrics in node_metrics.values())
+            
+    #         for node in tree.traverse():
+    #             ns = NodeStyle()
+                
+    #             if node.is_leaf() and hasattr(node, primary_metric):
+    #                 # Color by metric value
+    #                 metric_value = getattr(node, primary_metric, 0)
+    #                 normalized_value = metric_value / max_value if max_value > 0 else 0
+                    
+    #                 # Color scale: blue (low) to red (high)
+    #                 color_intensity = int(255 * normalized_value)
+    #                 ns.bgcolor = f"rgb({color_intensity},0,{255-color_intensity})"
+    #                 ns.size = 10
+                    
+    #                 # Add metric as text
+    #                 metric_text = f"{metric_value:.2f}"
+    #                 metric_face = TextFace(metric_text, fsize=8)
+    #                 node.add_face(metric_face, column=1, position="branch-right")
+                
+    #             node.set_style(ns)
+            
+    #         # Render tree
+    #         tree.render(str(output_file), tree_style=ts, dpi=300)
+    #         logger.info(f"    ✅ Tree plot created: {output_file}")
+            
+    #     except Exception as e:
+    #         logger.error(f"Tree plot creation failed: {e}")
+            
+    def create_annotated_tree_plot(self, tree, output_file, node_metrics):
+        """Create tree plot using ete3 render without GUI components"""
+        try:
+            # Use basic ete3 render - NO GUI components
+            tree.render(str(output_file), w=800, h=600, dpi=300)
+            logger.info(f" • BUSCO tree rendered: {output_file}")
+            
+        except Exception as e:
+            logger.error(f"ete3 render failed: {e}, falling back to matplotlib")
+            # Fallback to matplotlib
+            import matplotlib.pyplot as plt
+            import numpy as np
+            
+            fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+            
+            leaves = tree.get_leaves()
+            species_names = [leaf.name.replace('_', ' ') for leaf in leaves]
+            
+            for i, name in enumerate(species_names):
+                ax.text(1.0, i, name, ha='left', va='center', fontsize=11, weight='bold')
+                ax.plot([0.8, 1.0], [i, i], 'k-', linewidth=2)
+                
+                # Add inversion count if available
+                inversions = getattr(leaves[i], 'inversions', 0)
+                ax.text(1.5, i, f"({inversions} inv)", ha='left', va='center', 
+                    fontsize=9, color='red')
+            
+            ax.set_xlim(0, 2.0)
+            ax.set_ylim(-0.5, len(leaves) - 0.5)
+            ax.set_title('BUSCO Phylogenetic Tree', fontsize=14, weight='bold')
+            ax.axis('off')
+            
+            plt.tight_layout()
+            plt.savefig(output_file, dpi=300, bbox_inches='tight')
+            plt.close()
+            
+            logger.info(f" • Matplotlib fallback tree saved: {output_file}")
 
 def create_publication_plots(ortholog_df: pd.DataFrame, inversion_df: pd.DataFrame, 
                         synteny_df: pd.DataFrame, registry, config: Dict, 
@@ -1019,208 +1242,4 @@ def create_annotated_phylogeny(all_results: Dict, species_stats: Dict,
         
         plot_generator = PublicationPlotGenerator(registry, config)
         
-        return plot_generator._create_annotated_phylogeny(all_results, species_stats, output_dir)
-
-def _create_busco_phylogenetic_tree(self, all_results: Dict, species_stats: Dict, output_dir: Path) -> Dict:
-    """Create phylogenetic tree from existing Newick file with configurable node annotations"""
-    
-    logger.info("  🌳 Creating BUSCO phylogenetic tree from existing file...")
-    
-    tree_config = self.pub_config.get('tree_annotation', {})
-    source_tree = tree_config.get('source_tree_path', 'diptera_clean_20species.newick')
-    
-    if not Path(source_tree).exists():
-        logger.warning(f"Source tree file not found: {source_tree}")
-        return {}
-    
-    try:
-        from ete3 import Tree
-        
-        # Load the tree
-        tree = Tree(source_tree)
-        logger.info(f"    • Loaded tree with {len(tree)} nodes")
-        
-        # Get species names
-        species_names = list(species_stats.keys())
-        logger.info(f"    • Target species: {species_names}")
-        
-        # Prune tree to target species (if enabled)
-        if tree_config.get('prune_to_target_species', True):
-            tree = self._prune_tree_to_species(tree, species_names)
-            if tree is None:
-                logger.warning("Tree pruning failed")
-                return {}
-        
-        # Calculate metrics for node annotation
-        node_metrics = self._calculate_tree_node_metrics(all_results, species_stats)
-        
-        # Annotate tree with metrics
-        annotated_tree = self._annotate_tree_nodes(tree, node_metrics)
-        
-        # Create tree plots
-        tree_dir = output_dir / 'busco_phylogenetic_trees'
-        tree_dir.mkdir(exist_ok=True)
-        
-        results = {}
-        
-        # Save annotated tree
-        tree_file = tree_dir / 'busco_phylogenetic_tree.newick'
-        annotated_tree.write(format=1, outfile=str(tree_file))
-        results['newick'] = tree_file
-        
-        # Create tree plot
-        plot_file = tree_dir / 'busco_phylogenetic_tree.png'
-        self._create_annotated_tree_plot(annotated_tree, plot_file, node_metrics)
-        results['plot'] = plot_file
-        
-        logger.info(f"    ✅ BUSCO phylogenetic tree created: {len(results)} outputs")
-        return results
-        
-    except ImportError:
-        logger.error("ete3 required for phylogenetic tree manipulation")
-        return {}
-    except Exception as e:
-        logger.error(f"BUSCO phylogenetic tree creation failed: {e}")
-        return {}
-
-def _calculate_tree_node_metrics(self, all_results: Dict, species_stats: Dict) -> Dict:
-    """Calculate metrics for tree node annotation from config"""
-    
-    tree_config = self.pub_config.get('tree_annotation', {})
-    metrics_config = tree_config.get('annotation_metrics', {})
-    
-    node_metrics = {}
-    
-    for species_name, stats in species_stats.items():
-        metrics = {}
-        
-        # Default metric: inversion rate per MB
-        if metrics_config.get('inversion_rate_per_mb', True):
-            genome_size = stats['quality']['metrics'].get('total_length', 1000000)
-            species_inversions = sum(1 for pair_results in all_results.values() 
-                                   if 'full_results' in pair_results and 
-                                   species_name in pair_results['species_pair'] and
-                                   len(pair_results['inversion_df']) > 0)
-            metrics['inversion_rate_per_mb'] = species_inversions / (genome_size / 1_000_000)
-        
-        # Inversion count
-        if metrics_config.get('inversion_count', True):
-            species_inversions = []
-            for pair_results in all_results.values():
-                if 'full_results' in pair_results and species_name in pair_results['species_pair']:
-                    species_inversions.extend(pair_results['inversion_df'].to_dict('records'))
-            metrics['inversion_count'] = len(species_inversions)
-        
-        # Normalized inversion score
-        if metrics_config.get('normalized_inversion_score', True):
-            if 'inversion_rate_per_mb' in metrics:
-                all_rates = [node_metrics.get(sp, {}).get('inversion_rate_per_mb', 0) 
-                           for sp in species_stats.keys()]
-                max_rate = max(all_rates + [metrics['inversion_rate_per_mb']])
-                metrics['normalized_score'] = metrics['inversion_rate_per_mb'] / max_rate if max_rate > 0 else 0
-        
-        # Assembly quality
-        if metrics_config.get('assembly_quality', False):
-            metrics['quality_score'] = stats['quality'].get('quality_score', 0.5)
-        
-        # Genome size
-        if metrics_config.get('genome_size', False):
-            metrics['genome_size_mb'] = stats['quality']['metrics'].get('total_length', 0) / 1_000_000
-        
-        node_metrics[species_name] = metrics
-    
-    return node_metrics
-
-def _prune_tree_to_species(self, tree: 'Tree', target_species: List[str]) -> Optional['Tree']:
-    """Prune tree to target species"""
-    try:
-        # Get all leaf names
-        leaf_names = [leaf.name for leaf in tree.get_leaves()]
-        
-        # Find matches (allowing partial matches)
-        species_in_tree = []
-        for species in target_species:
-            matches = [leaf for leaf in leaf_names if species in leaf or leaf in species]
-            if matches:
-                species_in_tree.append(matches[0])  # Take first match
-            else:
-                logger.warning(f"Species {species} not found in tree")
-        
-        if len(species_in_tree) < 2:
-            logger.error(f"Too few species found in tree: {species_in_tree}")
-            return None
-        
-        # Prune tree
-        tree.prune(species_in_tree)
-        logger.info(f"    • Pruned tree to {len(species_in_tree)} species: {species_in_tree}")
-        
-        return tree
-        
-    except Exception as e:
-        logger.error(f"Tree pruning failed: {e}")
-        return None
-
-def _annotate_tree_nodes(self, tree: 'Tree', node_metrics: Dict) -> 'Tree':
-    """Annotate tree nodes with calculated metrics"""
-    
-    for leaf in tree.get_leaves():
-        leaf_name = leaf.name
-        
-        # Find matching species (allowing partial matches)
-        matching_species = None
-        for species in node_metrics.keys():
-            if species in leaf_name or leaf_name in species:
-                matching_species = species
-                break
-        
-        if matching_species and matching_species in node_metrics:
-            metrics = node_metrics[matching_species]
-            
-            # Add metrics as node features
-            for metric_name, metric_value in metrics.items():
-                setattr(leaf, metric_name, metric_value)
-    
-    return tree
-
-def _create_annotated_tree_plot(self, tree: 'Tree', output_file: Path, node_metrics: Dict):
-    """Create tree plot with node annotations"""
-    
-    try:
-        from ete3 import TreeStyle, NodeStyle, TextFace
-        
-        ts = TreeStyle()
-        ts.show_leaf_name = True
-        ts.show_branch_length = True
-        ts.mode = "r"  # rectangular
-        ts.scale = 120
-        
-        # Color nodes by primary metric (inversion rate)
-        primary_metric = 'inversion_rate_per_mb'
-        max_value = max(metrics.get(primary_metric, 0) for metrics in node_metrics.values())
-        
-        for node in tree.traverse():
-            ns = NodeStyle()
-            
-            if node.is_leaf() and hasattr(node, primary_metric):
-                # Color by metric value
-                metric_value = getattr(node, primary_metric, 0)
-                normalized_value = metric_value / max_value if max_value > 0 else 0
-                
-                # Color scale: blue (low) to red (high)
-                color_intensity = int(255 * normalized_value)
-                ns.bgcolor = f"rgb({color_intensity},0,{255-color_intensity})"
-                ns.size = 10
-                
-                # Add metric as text
-                metric_text = f"{metric_value:.2f}"
-                metric_face = TextFace(metric_text, fsize=8)
-                node.add_face(metric_face, column=1, position="branch-right")
-            
-            node.set_style(ns)
-        
-        # Render tree
-        tree.render(str(output_file), tree_style=ts, dpi=300)
-        logger.info(f"    ✅ Tree plot created: {output_file}")
-        
-    except Exception as e:
-        logger.error(f"Tree plot creation failed: {e}")
+        return plot_generator.create_annotated_phylogeny(all_results, species_stats, output_dir)
