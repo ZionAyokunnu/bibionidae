@@ -18,7 +18,7 @@ def analyze_enhanced_synteny_blocks(ortholog_df, config):
     
     if len(ortholog_df) == 0:
         logger.warning("No ortholog pairs found for synteny analysis")
-        return pd.DataFrame(synteny_blocks), pd.DataFrame(chromosome_mappings)
+        return pd.DataFrame(synteny_blocks)ƒ, pd.DataFrame(chromosome_mappings)
     
     for (first_chr, second_chr), group in ortholog_df.groupby(['first_chr', 'second_chr']):
         min_genes = config.get('base_min_genes_per_chromosome', 3)

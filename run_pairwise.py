@@ -222,11 +222,11 @@ def main():
     
     # Update config with your file paths
     config.update({
-        'first_fasta_path': 'GCA_963924295.1_idDioRufi1.1_genomic.fna',
-        'second_fasta_path': 'Dioctria_linearis.fna',
-        'first_busco_path': 'Dioctria_rufipes.tsv',
-        'second_busco_path': 'Dioctria_linearis.tsv',
-        'base_output_dir': f'v7/{args.mode}_results'  # New output dir
+        'first_fasta_path': 'Bibio_marci/Bibio_marci.fna',
+        'second_fasta_path': 'Bibio_marci_inverted.fasta',
+        'first_busco_path': 'Busco-tables/Bibio_marci.tsv',
+        'second_busco_path': 'Busco-tables/Bibio_marci.tsv',
+        'base_output_dir': f'v7/{args.mode}_results'
     })
     
     # Verify files exist

@@ -32,7 +32,7 @@ CONFIG = {
     
     # Simulation parameters
     'simulate_inversions': True,
-    'num_inversions': 1,
+    'num_inversions': 90,
     'marker_size_bp': 5000,  # Size of each marker block in base pairs
     
     # NEW: Inversion type controls
