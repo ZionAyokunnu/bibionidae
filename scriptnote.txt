@@ -169,3 +169,8 @@ python3 /Users/za7/Documents/Agora/src/misc.compareGenomes.py \
   /Users/za7/Documents/giq/agora_results/ancGenome.504100.00.list.bz2 \
   /Users/za7/Documents/giq/reformatted/ancGenes.504100.00.list.bz2 \
   -mode=printOrthologuesCount
+
+
+
+
+((Dioctria_linearis:0.00845,Dioctria_rufipes:0.00835)504100.00:0.06567,Leptarthrus_brevirostris:0.07405)503100.00:0.01681
