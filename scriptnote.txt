@@ -80,14 +80,17 @@ awk -F'\t' '$1!~/^#/ && $2=="Complete"{print $1}' /Users/za7/Documents/Bibionida
 Check- Find common BUSCO IDs across all 3(no. of Genomes) species / be in extracted/
 cat ids.Dioctria_lin ids.Dioctria_ruf ids.Leptarthrus | sort | uniq -c | awk '$1==3{print $2}' > /Users/za7/Documents/giq/extracted/busco_ids_all.txt
 
-cat ids.Bibio ids.Dilophus ids.Plecia | sort | uniq -c | awk '$1==3{print $2}' > /Users/za7/Documents/giq/extracted/busco_ids_all.txt
+cat ids.Bibio ids.Dilophus ids.Plecia | sort | uniq -c | awk '$1==3{print $2}' > /Users/za7/Documents/giq/extracted/busco_ids_bibio_trio.txt
 
 Check how many common genes we have
 wc -l busco_ids_all.txt
 
+
+wc -l busco_ids_bibio_trio.txt
+
 Create orthology groups file
 awk '{printf "%s\tBibio_marci|%s\tPlecia_longiforceps|%s\tDilophus_febrilis|%s\n",$1,$1,$1,$1}' \
-  busco_ids_all.txt | bzip2 > /Users/za7/Documents/giq/extracted/orthologyGroups.all.list.bz2
+  busco_ids_bibio_trio.txt | bzip2 > /Users/za7/Documents/giq/extracted/orthologyGroups.bibio_trio.list.bz2
 
 
 awk '{printf "%s\Dioctria_linearis|%s\Dioctria_rufipes|%s\Leptarthrus_brevirostris|%s\n",$1,$1,$1,$1}' \
