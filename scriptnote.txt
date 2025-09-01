@@ -3,6 +3,15 @@
 (syngraph_env) za7@mib119097s giq % head -2500 /Users/za7/Documents/Bibionidae/busco-tables/dilophus_febrilis.tsv | tail -1500 > dilophus_febrilis_midcut.tsv
 
 
+head -2500 /Users/zionayokunnu/Documents/Bibionidae/busco-tables/Dioctria_linearis.tsv | tail -1500 > \
+/Users/zionayokunnu/Documents/Giq/compare/Dioctria_linearis_midcut.tsv
+
+head -51 /Users/zionayokunnu/Documents/Bibionidae/busco-tables/Dioctria_linearis.tsv | tail -50 > \
+/Users/zionayokunnu/Documents/Giq/compare/Dioctria_linearis_50.tsv
+
+
+head -51 /Users/zionayokunnu/Documents/Bibionidae/busco-tables/Dioctria_rufipes.tsv | tail -50 > \
+/Users/zionayokunnu/Documents/Giq/compare/Dioctria_rufipes_50.tsv
 
 AGORA's
 
